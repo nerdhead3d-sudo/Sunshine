@@ -1,0 +1,244 @@
+import random
+import re
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QGuiApplication, QIcon, QPainter
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
+
+import config
+from pet.behavior.state_machine import PetStateMachine, State
+from pet.overlay.action_bubble import ActionBubble
+from pet.overlay.sprite_animator import SpriteAnimator
+from pet.overlay.voice_chat import VoiceChatController
+from pet.overlay.window_tracker import top_edge_platforms
+from pet.recognition.recognizer import RecognitionService
+
+_PLACEHOLDER_NAME_RE = re.compile(r"^Persona\d+$")
+
+
+class PetWindow(QWidget):
+    """Frameless, transparent, always-on-top sprite that wanders back and
+    forth across the bottom of its home screen. Click to mute/unmute its
+    always-listening voice chat.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setFixedSize(config.DISPLAY_SIZE, config.DISPLAY_SIZE)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+        self.animator = SpriteAnimator()
+        self.state_machine = PetStateMachine()
+        self.frame_index = 0
+        self.current_pixmap = None
+        self._last_state = None
+        self._muted = False
+
+        self._screen_rect = self._home_screen_geometry()
+        self._x = self._screen_rect.x() + self._screen_rect.width() // 2
+        self._ground_y = (
+            self._screen_rect.y()
+            + self._screen_rect.height()
+            - config.DISPLAY_SIZE
+            - config.GROUND_MARGIN
+        )
+        self._y = self._ground_y
+        self.move(self._x, self._y)
+
+        self._platforms = []
+        self._on_platform = False
+        self._platform_bounds = None
+
+        self._update_pixmap()
+
+        self.anim_timer = QTimer(self)
+        self.anim_timer.timeout.connect(self._advance_frame)
+        self.anim_timer.start(config.FRAME_INTERVAL_MS)
+
+        self.move_timer = QTimer(self)
+        self.move_timer.timeout.connect(self._tick)
+        self.move_timer.start(config.MOVE_INTERVAL_MS)
+
+        self.action_bubble = ActionBubble()
+
+        self.voice_chat = VoiceChatController(self)
+        self.voice_chat.action_ready.connect(self._on_action_text)
+        self.voice_chat.mood_changed.connect(self._on_mood_changed)
+        self.voice_chat.start()
+
+        self.recognition = RecognitionService(self)
+        self.recognition.identity_recognized.connect(self._on_identity_recognized)
+        self.recognition.identity_learned.connect(self._on_identity_learned)
+        self.recognition.start()
+
+        self.window_scan_timer = QTimer(self)
+        self.window_scan_timer.timeout.connect(self._refresh_platforms)
+        self.window_scan_timer.start(config.WINDOW_SCAN_INTERVAL_MS)
+        self._refresh_platforms()
+
+        self.climb_timer = QTimer(self)
+        self.climb_timer.timeout.connect(self._maybe_climb)
+        self.climb_timer.start(config.CLIMB_CHECK_INTERVAL_MS)
+
+        self._setup_tray()
+
+    def _setup_tray(self):
+        icon_path = config.SPRITES_DIR / "idle" / "idle_0.png"
+        icon = QIcon(str(icon_path)) if icon_path.exists() else self.windowIcon()
+
+        menu = QMenu()
+        self.mute_action = menu.addAction("Muta microfono")
+        self.mute_action.setCheckable(True)
+        self.mute_action.toggled.connect(self._set_muted)
+        menu.addSeparator()
+        menu.addAction("Esci", QApplication.quit)
+
+        self.tray = QSystemTrayIcon(icon, self)
+        self.tray.setToolTip(config.PET_NAME)
+        self.tray.setContextMenu(menu)
+        self.tray.show()
+
+    @staticmethod
+    def _home_screen_geometry():
+        screens = QGuiApplication.screens()
+        index = config.SECONDARY_SCREEN_INDEX if config.SECONDARY_SCREEN_INDEX < len(screens) else 0
+        return screens[index].availableGeometry()
+
+    def _advance_frame(self):
+        self.frame_index += 1
+        self._update_pixmap()
+        self.update()
+
+    def _tick(self):
+        if self._on_platform and self._platform_bounds is not None:
+            left_bound = self._platform_bounds[0]
+            right_bound = max(left_bound, self._platform_bounds[1] - config.DISPLAY_SIZE)
+        else:
+            left_bound = self._screen_rect.x()
+            right_bound = self._screen_rect.x() + self._screen_rect.width() - config.DISPLAY_SIZE
+
+        at_left = self._x <= left_bound
+        at_right = self._x >= right_bound
+
+        state = self.state_machine.tick(at_left, at_right)
+
+        if state == State.WALK_LEFT:
+            self._x -= config.WALK_SPEED
+        elif state == State.WALK_RIGHT:
+            self._x += config.WALK_SPEED
+
+        self._x = max(left_bound, min(self._x, right_bound))
+        self.move(self._x, self._y)
+
+        if state != self._last_state:
+            self._last_state = state
+            self.frame_index = 0
+            self._update_pixmap()
+            self.update()
+
+    def _refresh_platforms(self):
+        hwnd = int(self.winId())
+        self._platforms = top_edge_platforms(
+            self._screen_rect,
+            exclude_hwnd=hwnd,
+            min_width=config.MIN_PLATFORM_WIDTH,
+            pet_height=config.DISPLAY_SIZE,
+        )
+
+    def _maybe_climb(self):
+        if self._on_platform or not self._platforms:
+            return
+        if random.random() > config.CLIMB_CHANCE:
+            return
+
+        x0, x1, top = random.choice(self._platforms)
+        target_y = top - config.DISPLAY_SIZE
+        if target_y < self._screen_rect.y():
+            return  # safety net: never stand above the visible screen area
+
+        self._on_platform = True
+        self._platform_bounds = (x0, x1)
+        self._x = max(x0, min(self._x, x1 - config.DISPLAY_SIZE))
+        self._y = target_y
+        self.move(self._x, self._y)
+        self.state_machine.trigger_react(15)
+
+        QTimer.singleShot(config.CLIMB_DURATION_MS, self._climb_down)
+
+    def _climb_down(self):
+        self._on_platform = False
+        self._platform_bounds = None
+        self._y = self._ground_y
+        self.move(self._x, self._y)
+        self.state_machine.trigger_react(15)
+
+    def _update_pixmap(self):
+        self.current_pixmap = self.animator.get_frame(self.state_machine.state.value, self.frame_index)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        if self.current_pixmap:
+            painter.drawPixmap(0, 0, self.current_pixmap)
+        painter.end()
+
+    def closeEvent(self, event):
+        self.voice_chat.stop()
+        self.recognition.stop()
+        self.recognition.wait(2000)
+        super().closeEvent(event)
+
+    def _on_identity_recognized(self, name: str, kind: str):
+        self.state_machine.trigger_react()
+        if kind != "person":
+            return
+
+        if _PLACEHOLDER_NAME_RE.match(name):
+            # Learned in a previous session but never got a real name
+            # (e.g. the app was closed before it could ask) — ask now.
+            self.voice_chat.request_name_for(name, on_named=self._on_person_renamed)
+        else:
+            self.voice_chat.set_identity(name, seen_via_camera=True)
+            self.voice_chat.announce(f"Ciao {name}!")
+
+    def _on_identity_learned(self, name: str, kind: str):
+        self.state_machine.trigger_react()
+        if kind == "person":
+            self.voice_chat.request_name_for(name, on_named=self._on_person_renamed)
+        else:
+            self.voice_chat.announce(f"Ho imparato a riconoscere questo gatto, lo chiamo {name}.")
+
+    def _on_person_renamed(self, old_name: str, new_name: str):
+        self.recognition.rename_identity("person", old_name, new_name)
+
+    def _on_action_text(self, text: str):
+        self.action_bubble.show_action(text, self._x, self._y, self._screen_rect)
+        self.state_machine.trigger_react(10)
+
+    def _on_mood_changed(self, label: str, value: float):
+        if value >= config.MOOD_HAPPY_REACT_THRESHOLD:
+            self.state_machine.trigger_react(10)
+
+    def _set_muted(self, muted: bool):
+        self._muted = muted
+        self.voice_chat.set_paused(muted)
+        self.mute_action.setChecked(muted)  # keep tray menu in sync when toggled by clicking the pet
+        self.state_machine.trigger_react(10)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.activateWindow()
+            self.setFocus()
+            self._set_muted(not self._muted)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            QApplication.quit()
+        else:
+            super().keyPressEvent(event)

@@ -1,0 +1,16 @@
+PySide6>=6.11
+opencv-contrib-python>=4.13
+numpy>=2.0
+Pillow>=12.0
+# torch: install the CPU-only build explicitly to avoid pulling the huge
+# CUDA wheel from the default index:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.5
+gpt4all>=2.8
+huggingface_hub>=0.25
+ollama>=0.6
+edge-tts>=7.0
+piper-tts>=1.4
+pyttsx3>=2.99
+faster-whisper>=1.2
+sounddevice>=0.5

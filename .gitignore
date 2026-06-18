@@ -1,0 +1,23 @@
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Local tool config, not part of the project
+.claude/
+
+# Downloaded models (large binaries, re-downloaded automatically on first run)
+pet/local_models/
+
+# Personal/sensitive data: face photos, trained face-recognition models,
+# conversation history and identity database — never published.
+pet/recognition/samples/
+pet/recognition/models/
+pet/data/
+
+# Generated placeholder sprites (regenerated automatically on first run)
+pet/assets/sprites/
+
+# Temporary test artifacts
+_test_*.py
+*.wav

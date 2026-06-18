@@ -1,0 +1,179 @@
+# Desktop Pet "Sunshine"
+
+Pet animato sempre in primo piano sul monitor secondario. Parla solo a
+voce (ascolto continuo, niente finestre di chat), riconosce automaticamente
+le persone e i gatti di casa via webcam senza bisogno di un enrollment
+manuale, e mantiene una memoria separata per ciascuna identità.
+
+## Setup
+
+```powershell
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Il "cervello" conversazionale è **completamente locale e offline**
+(`gpt4all`, nessun server esterno, nessuna GPU/compilatore richiesti): al
+primo messaggio viene scaricato una volta da Hugging Face un modello GGUF
+leggero (~770MB, `config.LOCAL_LLM_REPO_ID`/`LOCAL_LLM_FILENAME`) e tenuto
+in cache in `pet/local_models/`. Gira bene anche su PC senza GPU dedicata
+con 8GB di RAM (es. Surface Pro 7).
+
+Se preferisci usare Ollama invece (es. per un modello più grande con GPU
+dedicata), imposta `USE_LOCAL_LLM = False` in `config.py` e assicurati che
+Ollama sia in esecuzione con il modello scaricato:
+
+```powershell
+ollama pull llama3.2:1b
+```
+
+## Avvio
+
+Doppio click su **`Avvia Sunshine.vbs`**: lancia l'app con `pythonw.exe`
+(stesso venv, ma senza finestra di console — chiudendo una console
+accidentalmente non si chiude più il pet). In alternativa, da terminale:
+
+```powershell
+python main.py
+```
+
+(questa seconda forma apre anche una finestra di console, perché usa
+`python.exe` invece di `pythonw.exe`; chiuderla termina il pet).
+
+Al primo avvio vengono generati sprite placeholder in
+`pet/assets/sprites/`. Per usare grafica personalizzata, sostituisci i PNG
+in quelle cartelle mantenendo la stessa convenzione di nome
+(`<stato>_<indice>.png`, 64x64px).
+
+Il pet appare sul monitor secondario (indice configurabile in `config.py`,
+`SECONDARY_SCREEN_INDEX`), camminando nell'area di lavoro sopra la barra
+delle applicazioni (non sotto/dietro). Alterna autonomamente tra stato
+idle e camminata e, ogni tanto, si arrampica sul bordo superiore di una
+finestra visibile sullo schermo e ci cammina sopra per un po' prima di
+tornare a terra (parametri `CLIMB_*`/`WINDOW_SCAN_INTERVAL_MS` in
+`config.py`).
+
+Per chiudere l'app: premi **Esc** col pet in primo piano, oppure usa
+**"Esci"** dal menu della sua icona nella system tray (vicino
+all'orologio — se non la vedi, controlla la freccetta `^` delle icone
+nascoste).
+
+## Chat vocale continua
+
+Niente fumetti né campi di testo: Sunshine ascolta sempre dal microfono
+predefinito (rilevamento automatico dell'inizio/fine del parlato, nessun
+tasto da premere), trascrive **completamente offline** con `faster-whisper`
+(modello Whisper scaricato una volta da Hugging Face, `STT_WHISPER_MODEL`
+in `config.py`), genera la risposta con il modello locale `gpt4all`
+(`USE_LOCAL_LLM`/`LOCAL_LLM_*` in `config.py`) e la legge ad alta voce. Le
+risposte vengono lette frase per frase non appena il modello le genera,
+invece di aspettare il testo completo, per ridurre l'attesa percepita.
+
+La voce ha tre livelli, dal migliore al più semplice:
+1. **edge-tts** (voce neurale online, richiede internet) — usata di default
+2. **Piper** (voce neurale offline, buona qualità, modello ~60MB scaricato
+   una volta da Hugging Face) — entra in gioco automaticamente se manca
+   internet
+3. **pyttsx3/SAPI5** (offline, più robotica) — ultima spiaggia, solo se
+   anche Piper non riesce a partire
+
+Con questa catena **l'intera app funziona offline** (chat, riconoscimento
+vocale e voce), con qualità migliore quando c'è internet e un degrado
+controllato (mai muto) quando non c'è.
+
+## Umore (rete neurale nostra, allenata da zero)
+
+A differenza di tutto il resto (LLM, voce, STT: modelli pre-allenati da
+altri, solo scaricati e usati), il classificatore di umore è una piccola
+rete neurale **scritta e allenata da zero da noi** con PyTorch, su un
+dataset italiano scritto a mano (`pet/mood/dataset.py`, ~270 frasi, 7
+categorie: felice, affettuoso, eccitato, neutro, annoiato, triste,
+arrabbiato). Nessun peso pre-addestrato, nessun embedding esterno: solo
+tokenizzazione nostra (`pet/mood/vocab.py`) e una rete embedding + MLP
+(`pet/mood/model.py`) inizializzata a caso e allenata sul dataset.
+
+Ogni frase che dici viene classificata e aggiorna un punteggio di umore
+per la tua identità (colonna `mood` in `pet/data/pet_memory.db`, con una
+media mobile esponenziale — `MOOD_EMA_ALPHA` in `config.py`); quando
+l'umore è abbastanza positivo, Sunshine fa una piccola animazione di
+gioia. Il tono rilevato viene anche passato al modello di chat come
+contesto, così la risposta può tenerne conto.
+
+Per riaddestrare il modello dopo aver modificato il dataset:
+
+```powershell
+python -m pet.mood.train
+```
+
+## Comandi PC (stile "Alexa")
+
+Prima di passare la frase al modello, Sunshine controlla se corrisponde a
+un comando conosciuto (`pet/skills/intents.py`) e in tal caso lo esegue
+subito, senza passare da Ollama:
+
+- **Info**: "che ore sono", "che giorno è", "batteria", "quanto spazio
+  libero [su disco]"
+- **Volume/musica**: "alza/abbassa il volume", "muta", "metti in pausa",
+  "prossima/canzone precedente"
+- **App e siti**: "apri il blocco note / calcolatrice / paint / esplora
+  file", "apri youtube / google / gmail / il browser"
+- **Promemoria e timer**: "ricordami di...", "metti un timer di N
+  minuti/secondi" — Sunshine risponde a voce allo scadere
+
+Le frasi non riconosciute proseguono normalmente verso la chat con
+Ollama. App/siti e mappature sono in `pet/skills/commands.py`, facilmente
+estendibili.
+
+Clicca sul pet per silenziare/riattivare il microfono in qualsiasi
+momento.
+
+## Memoria per identità
+
+Ogni identità (persona riconosciuta, o il profilo predefinito `Io` quando
+nessuno è ancora stato riconosciuto) ha la propria cronologia di
+conversazione e i propri "fatti" salvati in `pet/data/pet_memory.db`
+(SQLite), ricaricati e inseriti nel system prompt a ogni riavvio.
+
+## Riconoscimento via webcam (ad apprendimento automatico)
+
+Sunshine riconosce le persone (volto) e i gatti (muso) inquadrati dalla
+webcam con Haar cascade + LBPH (OpenCV) — **non serve nessun enrollment
+manuale**: quando vede una faccia/muso che non riconosce per qualche
+secondo di seguito, la impara da sola, le assegna un nome temporaneo
+(`Persona1`, `Gatto1`, ...) e addestra il modello al volo
+(`pet/recognition/models/`).
+
+- Per una **persona** appena imparata, Sunshine chiede a voce "come ti
+  chiami?" e rinomina l'identità (sia nel riconoscimento webcam che nella
+  memoria di conversazione) con il nome che risponde.
+- Per un **gatto**, annuncia semplicemente di averlo imparato con il nome
+  temporaneo (i gatti non possono rispondere al posto loro).
+
+I parametri di apprendimento (`AUTO_LEARN_SAMPLE_COUNT`,
+`RECOGNITION_CONFIDENCE_THRESHOLD`, ecc.) sono in `config.py`. È comunque
+disponibile un comando manuale opzionale, se preferisci pre-assegnare un
+nome invece di aspettare l'apprendimento automatico:
+
+```powershell
+python -m pet.recognition.enroll --identity Marco --kind person
+python -m pet.recognition.enroll --identity Birba --kind cat
+```
+
+## Log e diagnostica
+
+Gli errori che avvengono in background (sintesi/riproduzione vocale,
+riconoscimento webcam, microfono non disponibile) vengono scritti in
+`pet/data/pet.log` invece di sparire silenziosamente — utile per capire
+perché qualcosa non ha funzionato senza dover rilanciare l'app da un
+terminale.
+
+## Test
+
+```powershell
+python -m unittest discover -s tests
+```
+
+Coprono la logica pura (parsing dei comandi vocali in `pet/skills/intents.py`
+e la macchina a stati del comportamento in `pet/behavior/state_machine.py`);
+il resto (overlay Qt, webcam, audio) richiede un avvio reale dell'app per
+essere verificato.
