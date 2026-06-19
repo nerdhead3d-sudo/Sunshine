@@ -11,14 +11,17 @@ from PIL import Image, ImageDraw
 SIZE = 64
 SUPERSAMPLE = 4  # draw this many times larger, then downscale for anti-aliasing
 OUTLINE_WIDTH = 3
+CHAR_SCALE = 0.62  # shrinks the silhouette so tail/whiskers/ears clear the canvas edges
 
-BODY = (255, 196, 138, 255)         # cream/orange fur
-BODY_SHADE = (235, 168, 105, 255)   # darker fur for simple shading
-BODY_LIGHT = (255, 235, 214, 255)   # belly/paws
-EAR_INNER = (255, 163, 178, 255)    # pink
-BLUSH = (255, 178, 188, 255)
-DARK = (61, 43, 42, 255)
-OUTLINE = (74, 50, 40, 255)
+BODY = (38, 36, 38, 255)            # black fur, matching the reference cat art
+BODY_SHADE = (20, 19, 21, 255)       # darker fur for simple shading
+BODY_LIGHT = (58, 54, 54, 255)       # belly/paws: subtle lighter charcoal, not cream
+EAR_INNER = (247, 173, 153, 255)     # pink, sampled from the reference art
+NOSE = (247, 173, 153, 255)          # same pink, fully opaque, for the nose
+BLUSH = (247, 173, 153, 130)         # same pink, low opacity, just a hint on the cheeks
+EYE_IRIS = (199, 162, 64, 255)       # amber/gold iris, sampled from the reference art
+DARK = (24, 18, 16, 255)             # pupils, nose, mouth
+OUTLINE = (15, 13, 13, 255)
 HIGHLIGHT = (255, 255, 255, 255)
 WHISKER = (255, 255, 255, 200)
 
@@ -28,8 +31,10 @@ def _canvas():
 
 
 def _s(v):
-    """Scales a single coordinate/length up to supersampled space."""
-    return v * SUPERSAMPLE
+    """Scales a size/offset (relative to the character's center) up to
+    supersampled space, shrunk by CHAR_SCALE so the silhouette's extremities
+    (tail, whiskers, ears) stay clear of the canvas edges."""
+    return round(v * SUPERSAMPLE * CHAR_SCALE)
 
 
 def _inset_triangle(tri, factor):
@@ -43,15 +48,15 @@ def _outset_box(box, amount):
     return [x0 - amount, y0 - amount, x1 + amount, y1 + amount]
 
 
-def _frame(bob=0, squash=0, eyes_closed=False, tail_swing=0, ears_flat=False, happy=False):
+def _frame(bob=0, squash=0, eyes_closed=False, tail_swing=0, ears_flat=False, happy=False, step=0):
     img = _canvas()
     draw = ImageDraw.Draw(img)
     ow = _s(OUTLINE_WIDTH)
 
     body_w = _s(44 + squash)
     body_h = _s(40 - squash)
-    cx = _s(SIZE // 2)
-    cy = _s(SIZE // 2 + 4 + bob)
+    cx = SIZE * SUPERSAMPLE // 2
+    cy = SIZE * SUPERSAMPLE // 2 + _s(4 + bob)
 
     # tail (outline first, then fill, for a crisp stroked look)
     tail_base = (cx + body_w // 2 - _s(6), cy + body_h // 2 - _s(8))
@@ -107,10 +112,19 @@ def _frame(bob=0, squash=0, eyes_closed=False, tail_swing=0, ears_flat=False, ha
         cx + belly_w / 2, cy + body_h / 2 + belly_h / 2,
     ], fill=BODY_LIGHT)
 
-    # paws
-    paw_y = cy + body_h // 2 - _s(3)
-    draw.ellipse([cx - body_w // 2 + _s(6), paw_y, cx - body_w // 2 + _s(16), paw_y + _s(8)], fill=BODY_LIGHT)
-    draw.ellipse([cx + body_w // 2 - _s(16), paw_y, cx + body_w // 2 - _s(6), paw_y + _s(8)], fill=BODY_LIGHT)
+    # legs (drawn below the body, with their own outline, so they read as actual
+    # limbs instead of the flat blob the old single "paws" ellipses looked like)
+    leg_w = _s(9)
+    leg_top = cy + body_h // 2 - _s(6)
+    for side, dx in ((-1, -body_w // 4), (1, body_w // 4)):
+        leg_h = _s(15) + side * step
+        leg_box = [cx + dx - leg_w // 2, leg_top, cx + dx + leg_w // 2, leg_top + leg_h]
+        draw.rounded_rectangle(_outset_box(leg_box, ow // 2), radius=leg_w // 2 + ow // 2, fill=OUTLINE)
+        draw.rounded_rectangle(leg_box, radius=leg_w // 2, fill=BODY)
+
+        paw_box = [leg_box[0] - _s(1), leg_box[3] - _s(6), leg_box[2] + _s(1), leg_box[3] + _s(2)]
+        draw.ellipse(_outset_box(paw_box, ow // 2), fill=OUTLINE)
+        draw.ellipse(paw_box, fill=BODY_LIGHT)
 
     # whiskers
     whisk_y = cy + _s(1)
@@ -124,8 +138,10 @@ def _frame(bob=0, squash=0, eyes_closed=False, tail_swing=0, ears_flat=False, ha
         draw.arc([cx - _s(13), eye_y - _s(4), cx - _s(3), eye_y + _s(4)], start=180, end=360, fill=DARK, width=_s(3))
         draw.arc([cx + _s(3), eye_y - _s(4), cx + _s(13), eye_y + _s(4)], start=180, end=360, fill=DARK, width=_s(3))
     else:
-        draw.ellipse([cx - _s(13), eye_y - _s(5), cx - _s(4), eye_y + _s(6)], fill=DARK)
-        draw.ellipse([cx + _s(4), eye_y - _s(5), cx + _s(13), eye_y + _s(6)], fill=DARK)
+        draw.ellipse([cx - _s(13), eye_y - _s(5), cx - _s(4), eye_y + _s(6)], fill=EYE_IRIS)
+        draw.ellipse([cx + _s(4), eye_y - _s(5), cx + _s(13), eye_y + _s(6)], fill=EYE_IRIS)
+        draw.ellipse([cx - _s(10), eye_y - _s(3), cx - _s(6), eye_y + _s(4)], fill=DARK)
+        draw.ellipse([cx + _s(6), eye_y - _s(3), cx + _s(10), eye_y + _s(4)], fill=DARK)
         draw.ellipse([cx - _s(11), eye_y - _s(4), cx - _s(8), eye_y - _s(1)], fill=HIGHLIGHT)
         draw.ellipse([cx + _s(6), eye_y - _s(4), cx + _s(9), eye_y - _s(1)], fill=HIGHLIGHT)
 
@@ -137,7 +153,7 @@ def _frame(bob=0, squash=0, eyes_closed=False, tail_swing=0, ears_flat=False, ha
     # nose + mouth
     draw.polygon([
         (cx - _s(2), eye_y + _s(5)), (cx + _s(2), eye_y + _s(5)), (cx, eye_y + _s(8)),
-    ], fill=BLUSH)
+    ], fill=NOSE)
     if happy:
         draw.arc([cx - _s(5), eye_y + _s(6), cx + _s(5), eye_y + _s(14)], start=0, end=180, fill=DARK, width=_s(2))
     else:
@@ -155,10 +171,10 @@ _STATE_FRAMES = {
         dict(bob=-1),
     ],
     "walk_left": [
-        dict(bob=0, tail_swing=4),
-        dict(bob=-2, tail_swing=-2, squash=2),
-        dict(bob=0, tail_swing=4),
-        dict(bob=-2, tail_swing=-2, squash=2),
+        dict(bob=0, tail_swing=4, step=5),
+        dict(bob=-2, tail_swing=-2, squash=2, step=-5),
+        dict(bob=0, tail_swing=4, step=5),
+        dict(bob=-2, tail_swing=-2, squash=2, step=-5),
     ],
     "sit": [
         dict(squash=10),
@@ -169,6 +185,16 @@ _STATE_FRAMES = {
         dict(bob=-6, happy=True, tail_swing=6),
         dict(bob=-4, happy=True),
         dict(bob=-2, happy=True, tail_swing=-6),
+    ],
+    "sleep": [
+        dict(squash=10, eyes_closed=True, ears_flat=True),
+        dict(squash=12, eyes_closed=True, ears_flat=True, bob=1),
+        dict(squash=10, eyes_closed=True, ears_flat=True),
+    ],
+    "dragged": [
+        dict(bob=-2, ears_flat=True),
+        dict(bob=-3, ears_flat=True, tail_swing=3),
+        dict(bob=-2, ears_flat=True, tail_swing=-3),
     ],
 }
 

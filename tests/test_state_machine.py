@@ -32,11 +32,37 @@ class PetStateMachineTests(unittest.TestCase):
         result = sm.tick(at_left_edge=False, at_right_edge=True)
         self.assertEqual(result, State.WALK_LEFT)
 
-    def test_idle_eventually_transitions_to_walking(self):
+    def test_idle_eventually_transitions_to_walking_or_sitting(self):
         sm = PetStateMachine()
         sm._ticks_left = 1
         result = sm.tick(False, False)
-        self.assertIn(result, (State.WALK_LEFT, State.WALK_RIGHT))
+        self.assertIn(result, (State.WALK_LEFT, State.WALK_RIGHT, State.SIT))
+
+    def test_sit_eventually_transitions_to_idle_or_sleep(self):
+        sm = PetStateMachine()
+        sm.state = State.SIT
+        sm._ticks_left = 1
+        result = sm.tick(False, False)
+        self.assertIn(result, (State.IDLE, State.SLEEP))
+
+    def test_sleep_eventually_transitions_to_idle(self):
+        sm = PetStateMachine()
+        sm.state = State.SLEEP
+        sm._ticks_left = 1
+        result = sm.tick(False, False)
+        self.assertEqual(result, State.IDLE)
+
+    def test_drag_has_absolute_priority_until_ended(self):
+        sm = PetStateMachine()
+        sm.trigger_react(ticks=3)
+        sm.start_drag()
+        self.assertEqual(sm.state, State.DRAGGED)
+
+        self.assertEqual(sm.tick(False, False), State.DRAGGED)
+        self.assertEqual(sm.tick(True, True), State.DRAGGED)
+
+        sm.end_drag()
+        self.assertEqual(sm.state, State.IDLE)
 
 
 if __name__ == "__main__":

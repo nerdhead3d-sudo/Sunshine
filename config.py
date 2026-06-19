@@ -103,6 +103,24 @@ MOVE_INTERVAL_MS = 60     # movement/state-machine tick rate
 WALK_SPEED = 3            # pixels per movement tick
 GROUND_MARGIN = 12        # pixels above the taskbar/work-area edge
 
+# Sit/sleep: while idle, the pet sometimes sits down instead of walking off
+# again; while sitting, it can drift into a longer sleep before waking back
+# to idle. Durations are in movement ticks (MOVE_INTERVAL_MS each).
+SIT_CHANCE = 0.3                    # probability idle -> sit instead of walk
+SLEEP_CHANCE = 0.25                 # probability sit -> sleep instead of idle
+SIT_DURATION_TICKS = (60, 150)      # ~3.6-9s
+SLEEP_DURATION_TICKS = (150, 300)   # ~9-18s
+
+# Drag: holding the pet with the mouse and moving it past this many pixels
+# (in either axis) turns a click into a drag instead of toggling mute.
+DRAG_MOVE_THRESHOLD_PX = 6
+
+# Drop: when released mid-air, the pet falls back to the ground instead of
+# teleporting there, then plays a short bounce reaction on touchdown.
+FALL_ACCEL = 1.5          # pixels/tick^2 of downward acceleration while falling
+FALL_MAX_SPEED = 14       # terminal velocity, pixels per movement tick
+LAND_REACT_TICKS = 8      # short happy-bounce reaction played on touchdown
+
 ACTION_BUBBLE_DURATION_MS = 4000  # how long a narrated-action bubble stays visible
 
 # Index into QGuiApplication.screens() used as the pet's home screen.

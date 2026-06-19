@@ -56,6 +56,13 @@ class PetWindow(QWidget):
         self._on_platform = False
         self._platform_bounds = None
 
+        self._dragging = False
+        self._drag_started = False
+        self._drag_mouse_start = None
+        self._drag_window_start = None
+        self._falling = False
+        self._fall_velocity = 0.0
+
         self._update_pixmap()
 
         self.anim_timer = QTimer(self)
@@ -118,6 +125,24 @@ class PetWindow(QWidget):
         self.update()
 
     def _tick(self):
+        if self._dragging:
+            return
+
+        if self._falling:
+            self._fall_velocity = min(self._fall_velocity + config.FALL_ACCEL, config.FALL_MAX_SPEED)
+            self._y += self._fall_velocity
+            if self._y >= self._ground_y:
+                self._y = self._ground_y
+                self._falling = False
+                self.state_machine.end_drag()
+                self.state_machine.trigger_react(config.LAND_REACT_TICKS)
+                self._last_state = self.state_machine.state
+                self.frame_index = 0
+                self._update_pixmap()
+                self.update()
+            self.move(self._x, self._y)
+            return
+
         if self._on_platform and self._platform_bounds is not None:
             left_bound = self._platform_bounds[0]
             right_bound = max(left_bound, self._platform_bounds[1] - config.DISPLAY_SIZE)
@@ -154,7 +179,7 @@ class PetWindow(QWidget):
         )
 
     def _maybe_climb(self):
-        if self._on_platform or not self._platforms:
+        if self._dragging or self._falling or self._on_platform or not self._platforms:
             return
         if random.random() > config.CLIMB_CHANCE:
             return
@@ -244,7 +269,58 @@ class PetWindow(QWidget):
         if event.button() == Qt.LeftButton:
             self.activateWindow()
             self.setFocus()
+            self._drag_started = False
+            self._drag_mouse_start = event.globalPosition().toPoint()
+            self._drag_window_start = (self._x, self._y)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_mouse_start is None:
+            return
+
+        delta = event.globalPosition().toPoint() - self._drag_mouse_start
+        if not self._drag_started:
+            if abs(delta.x()) < config.DRAG_MOVE_THRESHOLD_PX and abs(delta.y()) < config.DRAG_MOVE_THRESHOLD_PX:
+                return
+            self._drag_started = True
+            self._dragging = True
+            self.state_machine.start_drag()
+            self.frame_index = 0
+            self._last_state = self.state_machine.state
+
+        self._x = self._drag_window_start[0] + delta.x()
+        self._y = self._drag_window_start[1] + delta.y()
+        self.move(self._x, self._y)
+        self._update_pixmap()
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            return
+
+        if self._drag_started:
+            self._dragging = False
+            left_bound = self._screen_rect.x()
+            right_bound = self._screen_rect.x() + self._screen_rect.width() - config.DISPLAY_SIZE
+            self._x = max(left_bound, min(self._x, right_bound))
+
+            if self._y >= self._ground_y:
+                self._y = self._ground_y
+                self.state_machine.end_drag()
+                self.state_machine.trigger_react(config.LAND_REACT_TICKS)
+                self._last_state = self.state_machine.state
+                self.frame_index = 0
+                self._update_pixmap()
+                self.update()
+            else:
+                self._falling = True
+                self._fall_velocity = 0.0
+            self.move(self._x, self._y)
+        else:
             self._set_muted(not self._muted)
+
+        self._drag_started = False
+        self._drag_mouse_start = None
+        self._drag_window_start = None
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
