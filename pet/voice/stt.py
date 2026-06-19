@@ -22,7 +22,7 @@ class ContinuousListener(QObject):
     — fully hands-free. Use pause()/resume() to mute it (e.g. while the pet
     is talking) without tearing down the audio stream or its thread."""
 
-    utterance_recognized = Signal(str)
+    utterance_recognized = Signal(str, str)  # text, detected/fixed language code
 
     BLOCK_SECONDS = 0.1
 
@@ -31,6 +31,7 @@ class ContinuousListener(QObject):
         self._stop_event = threading.Event()
         self._paused_event = threading.Event()
         self._whisper = None
+        self._fixed_language: str | None = None  # None = auto-detect every utterance
 
     def start(self):
         threading.Thread(target=self._run, daemon=True).start()
@@ -43,6 +44,11 @@ class ContinuousListener(QObject):
 
     def resume(self):
         self._paused_event.clear()
+
+    def set_language(self, lang: str | None):
+        """Fixes recognition to `lang` (skips auto-detection each time, more
+        consistent and a bit faster), or pass None to go back to auto-detect."""
+        self._fixed_language = lang
 
     def _run(self):
         first_failure = True
@@ -152,10 +158,11 @@ class ContinuousListener(QObject):
 
     def _transcribe_and_emit(self, recording):
         audio = recording.astype(np.float32).flatten() / 32768.0
+        text, lang = "", self._fixed_language or config.DEFAULT_LANGUAGE
         try:
-            segments, _info = self._whisper.transcribe(audio, language=config.STT_LANGUAGE_CODE)
+            segments, info = self._whisper.transcribe(audio, language=self._fixed_language)
             text = "".join(segment.text for segment in segments).strip()
+            lang = info.language if info.language in config.SUPPORTED_LANGUAGES else lang
         except Exception:
             get_logger().exception("Local speech-to-text failed")
-            text = ""
-        self.utterance_recognized.emit(text)
+        self.utterance_recognized.emit(text, lang)

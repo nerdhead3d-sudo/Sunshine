@@ -6,7 +6,15 @@ microphone without losing the active identity/conversation.
 Replies are spoken sentence-by-sentence as they stream in from the model,
 instead of waiting for the full response: the pet starts talking after the
 first sentence rather than after the whole answer is generated, which cuts
-the perceived latency noticeably for longer replies."""
+the perceived latency noticeably for longer replies.
+
+Multi-language: faster-whisper auto-detects the spoken language on every
+utterance unless it's been fixed (via a spoken command like "speak
+english"/"parla in inglese"), in which case the fixed language is
+remembered per identity (pet_memory.db) and reused across restarts. The
+PC-skill commands and a few canned replies ("chi sono io?", asking for a
+name) are Italian-only for now — unmatched phrases just fall through to
+the chat model, which does reply in the active language."""
 
 import re
 from datetime import datetime, timedelta, timezone
@@ -16,7 +24,7 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal
 import config
 from pet.memory.store import MemoryStore
 from pet.mood.classifier import get_classifier
-from pet.skills import intents
+from pet.skills import intents, language_commands
 from pet.voice.stt import ContinuousListener
 from pet.voice.tts import SpeakWorker
 
@@ -37,6 +45,15 @@ _NAME_INTRO_PATTERNS = [
     re.compile(r"\bmi chiamano\s+(.+)", re.IGNORECASE),
     re.compile(r"\bsono\s+(.+)", re.IGNORECASE),
 ]
+
+_LANGUAGE_DIRECTIVE = {
+    "it": "Rispondi sempre in italiano.",
+    "en": "Always reply in English.",
+    "fr": "Réponds toujours en français.",
+    "es": "Responde siempre en español.",
+    "de": "Antworte immer auf Deutsch.",
+    "pt": "Responde sempre em português.",
+}
 
 
 def _extract_name(spoken: str) -> str:
@@ -107,6 +124,9 @@ class VoiceChatController(QObject):
         self._conversation: list[dict] = []
         self._pending_user_text = ""
 
+        self._fixed_language: str | None = None  # per-identity preference; None = auto-detect
+        self._current_language = config.DEFAULT_LANGUAGE  # language of the utterance being handled right now
+
         self._awaiting_name_for: str | None = None
         self._on_named = None
 
@@ -156,6 +176,10 @@ class VoiceChatController(QObject):
         self._store.touch_last_seen(self._identity_id)
         self._facts = self._store.get_facts(self._identity_id)
         self._conversation = self._store.get_history(self._identity_id)
+
+        self._fixed_language = self._store.get_language(self._identity_id)
+        self._listener.set_language(self._fixed_language)
+
         if seen_via_camera:
             # In-memory only: tells the model it just recognized this person
             # via the webcam, without polluting the persisted fact list.
@@ -180,7 +204,8 @@ class VoiceChatController(QObject):
         return "Non ti ho ancora riconosciuto bene: resta un attimo davanti alla webcam e dovrei capire chi sei."
 
     def announce(self, text: str):
-        """Speaks `text` outside of the normal chat flow (greetings, etc.)."""
+        """Speaks `text` outside of the normal chat flow (greetings, etc.),
+        in the currently active language."""
         self._enqueue_speech(text)
 
     def _schedule_announcement(self, seconds: float, text: str):
@@ -207,7 +232,7 @@ class VoiceChatController(QObject):
 
     # -- listening loop -----------------------------------------------------
 
-    def _on_utterance(self, text: str):
+    def _on_utterance(self, text: str, detected_lang: str):
         text = text.strip()
         if not text:
             return
@@ -215,6 +240,14 @@ class VoiceChatController(QObject):
         if self._awaiting_name_for is not None:
             self._handle_name_answer(text)
             return
+
+        is_lang_command, target_lang = language_commands.detect(text)
+        if is_lang_command:
+            self._set_fixed_language(target_lang)
+            self.announce(language_commands.confirmation_for(target_lang))
+            return
+
+        self._current_language = self._fixed_language or detected_lang
 
         if _WHO_AM_I_RE.search(text):
             self.announce(self._who_am_i_reply())
@@ -226,6 +259,7 @@ class VoiceChatController(QObject):
             return
 
         mood_facts = self._update_mood(text)
+        directive = _LANGUAGE_DIRECTIVE.get(self._current_language, _LANGUAGE_DIRECTIVE["it"])
 
         self._busy = True
         self._streaming = True
@@ -233,17 +267,25 @@ class VoiceChatController(QObject):
         self._refresh_listening()
 
         self._pending_user_text = text
-        messages = self._client.build_messages(self._facts + mood_facts, self._conversation, text)
+        messages = self._client.build_messages([directive] + self._facts + mood_facts, self._conversation, text)
         self._reply_worker = _ReplyWorker(self._client, messages, self)
         self._reply_worker.chunk_ready.connect(self._on_reply_chunk)
         self._reply_worker.finished_reply.connect(self._on_reply_finished)
         self._reply_worker.start()
 
+    def _set_fixed_language(self, lang: str | None):
+        self._fixed_language = lang
+        self._current_language = lang or self._current_language
+        self._listener.set_language(lang)
+        if self._identity_id is not None:
+            self._store.set_language(self._identity_id, lang)
+
     def _update_mood(self, text: str) -> list[str]:
-        """Classifies `text` with our own from-scratch mood model, nudges
-        the identity's running mood score, and returns a transient fact
-        (not persisted) so the chat model is aware of the current tone."""
-        classifier = get_classifier()
+        """Classifies `text` with our own from-scratch mood model (one per
+        language), nudges the identity's running mood score, and returns a
+        transient fact (not persisted) so the chat model is aware of the
+        current tone."""
+        classifier = get_classifier(self._current_language)
         if classifier is None or self._identity_id is None:
             return []
 
@@ -324,7 +366,7 @@ class VoiceChatController(QObject):
             return
         sentence = self._speak_queue.pop(0)
         self._speaking = True
-        self._speak_worker = SpeakWorker(sentence, self)
+        self._speak_worker = SpeakWorker(sentence, self._current_language, self)
         self._speak_worker.finished_speaking.connect(self._on_sentence_spoken)
         self._speak_worker.start()
 

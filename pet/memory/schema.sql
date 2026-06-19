@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS identities (
     name TEXT NOT NULL UNIQUE,
     kind TEXT NOT NULL DEFAULT 'person',
     mood REAL NOT NULL DEFAULT 0,
+    language TEXT,  -- fixed language code (e.g. "en"), NULL = auto-detect
     last_seen TEXT
 );
 

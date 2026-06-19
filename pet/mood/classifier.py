@@ -1,6 +1,7 @@
 """Inference for the from-scratch mood classifier: loads the weights
 trained by pet/mood/train.py and classifies a piece of text into one of
-LABELS, with the corresponding numeric valence."""
+that language's LABELS, with the corresponding numeric valence. One
+classifier instance (and cache entry) per language."""
 
 import threading
 
@@ -8,21 +9,25 @@ import torch
 
 import config
 from pet.logging_setup import get_logger
-from pet.mood.dataset import LABELS, LABEL_VALENCE
+from pet.mood.datasets import get_dataset
 from pet.mood.model import MAX_LEN, MoodNet
 from pet.mood.vocab import encode, load_vocab
 
-_classifier = None  # None = not loaded, False = failed to load, else MoodClassifier
+_classifiers: dict[str, "MoodClassifier | bool"] = {}  # False = failed to load for that language
 _lock = threading.Lock()
 
 
 class MoodClassifier:
-    def __init__(self):
-        vocab_path = config.MOOD_MODEL_DIR / "mood_vocab.json"
-        weights_path = config.MOOD_MODEL_DIR / "mood_model.pt"
-        self._vocab = load_vocab(vocab_path)
-        self._model = MoodNet(vocab_size=len(self._vocab), num_classes=len(LABELS))
-        self._model.load_state_dict(torch.load(weights_path, weights_only=True))
+    def __init__(self, lang: str):
+        self.lang = lang
+        dataset_module = get_dataset(lang)
+        self._labels = dataset_module.LABELS
+        self._label_valence = dataset_module.LABEL_VALENCE
+
+        model_dir = config.MOOD_MODEL_DIR / lang
+        self._vocab = load_vocab(model_dir / "mood_vocab.json")
+        self._model = MoodNet(vocab_size=len(self._vocab), num_classes=len(self._labels))
+        self._model.load_state_dict(torch.load(model_dir / "mood_model.pt", weights_only=True))
         self._model.eval()
 
     def classify(self, text: str) -> tuple[str, float]:
@@ -31,23 +36,27 @@ class MoodClassifier:
         x = torch.tensor([ids], dtype=torch.long)
         with torch.no_grad():
             logits = self._model(x)
-            label = LABELS[int(logits.argmax(dim=1).item())]
-        return label, LABEL_VALENCE[label]
+            label = self._labels[int(logits.argmax(dim=1).item())]
+        return label, self._label_valence[label]
 
 
-def get_classifier() -> "MoodClassifier | None":
-    """Lazily loads the trained model once; returns None (logged) if it
-    hasn't been trained yet or fails to load, so callers can skip mood
-    tracking gracefully instead of crashing."""
-    global _classifier
-    if _classifier is not None:
-        return _classifier or None
+def get_classifier(lang: str = config.DEFAULT_LANGUAGE) -> "MoodClassifier | None":
+    """Lazily loads the trained model for `lang` once; returns None
+    (logged) if it hasn't been trained yet or fails to load, so callers
+    can skip mood tracking gracefully instead of crashing."""
+    cached = _classifiers.get(lang)
+    if cached is not None:
+        return cached or None
     with _lock:
-        if _classifier is not None:
-            return _classifier or None
+        cached = _classifiers.get(lang)
+        if cached is not None:
+            return cached or None
         try:
-            _classifier = MoodClassifier()
+            classifier = MoodClassifier(lang)
         except Exception:
-            get_logger().exception("Mood classifier unavailable (run 'python -m pet.mood.train' first?)")
-            _classifier = False
-    return _classifier or None
+            get_logger().exception(
+                "Mood classifier unavailable for '%s' (run 'python -m pet.mood.train --lang %s' first?)", lang, lang
+            )
+            classifier = False
+        _classifiers[lang] = classifier
+    return classifier or None

@@ -1,6 +1,6 @@
 """The mood classifier's network architecture — a small embedding + mean
 pooling + MLP, trained entirely from scratch (random init, no pretrained
-weights of any kind) on pet/mood/dataset.py.
+weights of any kind) on pet/mood/datasets/<lang>.py.
 
 10 learnable tensors in total: embedding.weight, 3x(hidden.weight+bias),
 out.weight+out.bias, and a learned scalar `temperature` that rescales the

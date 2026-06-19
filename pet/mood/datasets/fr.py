@@ -1,0 +1,126 @@
+"""Hand-written French training data for the mood classifier — own
+sentences, no external dataset, no pretrained embeddings. Smaller than
+the Italian set on purpose (a starting point, easy to expand later)."""
+
+LABEL_VALENCE = {
+    "heureux": 1.0,
+    "affectueux": 0.8,
+    "excite": 0.6,
+    "neutre": 0.0,
+    "ennuye": -0.3,
+    "triste": -0.7,
+    "en_colere": -1.0,
+}
+
+LABELS = list(LABEL_VALENCE.keys())
+
+EXAMPLES: list[tuple[str, str]] = [
+    # heureux
+    ("je suis tellement heureux aujourd'hui", "heureux"),
+    ("quelle belle journée, je suis aux anges", "heureux"),
+    ("je me sens vraiment bien en ce moment", "heureux"),
+    ("je suis ravi de te voir", "heureux"),
+    ("quelle joie, tout s'est bien passé", "heureux"),
+    ("je suis plein d'énergie positive", "heureux"),
+    ("j'ai réussi mon examen, je suis si content", "heureux"),
+    ("je rayonne de bonheur aujourd'hui", "heureux"),
+    ("quelle belle surprise, je suis enchanté", "heureux"),
+    ("j'ai le sourire toute la journée", "heureux"),
+    ("c'est la plus belle journée de l'année", "heureux"),
+    ("je suis rempli de joie", "heureux"),
+    ("j'ai obtenu le poste, je suis aux anges", "heureux"),
+    ("nous avons gagné le match, je suis ravi", "heureux"),
+    ("j'ai enfin économisé assez pour le voyage, quel bonheur", "heureux"),
+
+    # affectueux
+    ("je t'aime tellement", "affectueux"),
+    ("tu me manques énormément", "affectueux"),
+    ("tu es la chose la plus douce que j'ai", "affectueux"),
+    ("je te serre très fort dans mes bras", "affectueux"),
+    ("je suis très attaché à toi", "affectueux"),
+    ("j'aimerais te faire un câlin", "affectueux"),
+    ("tu es important pour moi", "affectueux"),
+    ("tu me fais sentir aimé", "affectueux"),
+    ("je pense toujours à toi avec tendresse", "affectueux"),
+    ("tu es mon petit trésor", "affectueux"),
+    ("j'aime être près de toi", "affectueux"),
+    ("merci d'être toujours là", "affectueux"),
+    ("tu es ma personne préférée", "affectueux"),
+    ("tu me réchauffes le cœur", "affectueux"),
+
+    # excite
+    ("je ne tiens plus en place", "excite"),
+    ("il vient de se passer quelque chose d'incroyable", "excite"),
+    ("j'ai hâte que le week-end arrive", "excite"),
+    ("je suis super motivé", "excite"),
+    ("waouh je n'y crois pas, c'est incroyable", "excite"),
+    ("je suis trop curieux de découvrir ça", "excite"),
+    ("allez, on y va tout de suite", "excite"),
+    ("je suis tellement excité pour la surprise", "excite"),
+    ("c'est trop bien, je n'arrive pas à me calmer", "excite"),
+    ("je suis prêt pour l'aventure", "excite"),
+    ("je tremble d'excitation", "excite"),
+    ("le grand jour est enfin arrivé, je suis surexcité", "excite"),
+
+    # neutre
+    ("aujourd'hui c'est mardi", "neutre"),
+    ("j'ai fait les courses ce matin", "neutre"),
+    ("je dois finir un travail", "neutre"),
+    ("l'ordinateur s'est allumé normalement", "neutre"),
+    ("je vais prendre une douche", "neutre"),
+    ("j'ai une réunion à dix heures demain", "neutre"),
+    ("je suis en train de lire un livre", "neutre"),
+    ("j'ai préparé le déjeuner", "neutre"),
+    ("le temps est nuageux aujourd'hui", "neutre"),
+    ("j'ai vérifié mes emails", "neutre"),
+    ("je range mon bureau", "neutre"),
+    ("j'écoute un podcast", "neutre"),
+    ("je n'ai pas de projets particuliers aujourd'hui", "neutre"),
+    ("j'ai mis à jour mon agenda", "neutre"),
+
+    # ennuye
+    ("je m'ennuie, je ne sais pas quoi faire", "ennuye"),
+    ("cette journée n'en finit pas", "ennuye"),
+    ("je n'ai envie de rien faire", "ennuye"),
+    ("je suis fatigué de rester ici sans rien faire", "ennuye"),
+    ("tout me semble monotone aujourd'hui", "ennuye"),
+    ("je m'ennuie à regarder le plafond", "ennuye"),
+    ("il n'y a rien d'intéressant à faire", "ennuye"),
+    ("cette attente est vraiment longue", "ennuye"),
+    ("je n'arrive pas à trouver quelque chose d'amusant", "ennuye"),
+    ("c'est d'un ennui mortel ici", "ennuye"),
+    ("je n'ai aucune envie de bouger", "ennuye"),
+    ("rien ne m'intéresse plus aujourd'hui", "ennuye"),
+
+    # triste
+    ("je suis très triste aujourd'hui", "triste"),
+    ("je me sens déprimé", "triste"),
+    ("j'ai envie de pleurer", "triste"),
+    ("je suis épuisé et sans énergie", "triste"),
+    ("je me sens seul et triste", "triste"),
+    ("aujourd'hui a été une journée lourde et mélancolique", "triste"),
+    ("je n'arrête pas d'être triste", "triste"),
+    ("je suis déçu et amer", "triste"),
+    ("tu me manques tellement et ça me rend triste", "triste"),
+    ("j'ai le cœur lourd aujourd'hui", "triste"),
+    ("je suis effondré par ce qui s'est passé", "triste"),
+    ("je me sens vide à l'intérieur", "triste"),
+    ("j'ai perdu mon emploi et je ne sais pas quoi faire", "triste"),
+    ("mon chien est mort cette semaine, je suis dévasté", "triste"),
+
+    # en_colere
+    ("je suis furieux maintenant", "en_colere"),
+    ("tu m'as vraiment énervé", "en_colere"),
+    ("je suis nerveux et irrité", "en_colere"),
+    ("je n'en peux plus, je suis exaspéré", "en_colere"),
+    ("ça me met hors de moi", "en_colere"),
+    ("je suis extrêmement en colère pour ce que tu as fait", "en_colere"),
+    ("je perds patience avec toi", "en_colere"),
+    ("je suis indigné par cette situation", "en_colere"),
+    ("tu me sors par les yeux", "en_colere"),
+    ("mon sang bout de rage", "en_colere"),
+    ("je suis à bout de patience", "en_colere"),
+    ("cette injustice me met très en colère", "en_colere"),
+    ("ils ont annulé mon vol sans même me prévenir", "en_colere"),
+    ("le livreur a perdu mon colis et personne ne répond", "en_colere"),
+]

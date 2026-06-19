@@ -3,13 +3,15 @@
 1. edge-tts (Microsoft Edge's online neural voices) — best quality, needs
    internet.
 2. Piper (offline neural voice, ONNX) — good quality, fully local, used
-   automatically when there's no internet. The voice model (~60MB) is
-   downloaded once from Hugging Face on first use.
+   automatically when there's no internet. The voice model (~60MB per
+   language) is downloaded once from Hugging Face on first use.
 3. pyttsx3/SAPI5 — offline but robotic, last-resort fallback if Piper
    itself fails to load.
 
-Whichever tier is used, `finished_speaking` always fires so the rest of
-the app doesn't get stuck waiting; failures are logged to pet/data/pet.log.
+Each tier picks its voice from config.TTS_VOICES / PIPER_VOICE_BASENAMES /
+TTS_FALLBACK_VOICE_HINTS based on the requested language. Whichever tier
+is used, `finished_speaking` always fires so the rest of the app doesn't
+get stuck waiting; failures are logged to pet/data/pet.log.
 """
 
 import asyncio
@@ -36,7 +38,7 @@ _EMOJI_RE = re.compile(
     flags=re.UNICODE,
 )
 
-_piper_voice = None  # None = not loaded yet, False = failed to load, else the PiperVoice
+_piper_voices: dict[str, object] = {}  # lang -> PiperVoice, or False if it failed to load
 _piper_lock = threading.Lock()
 
 
@@ -50,40 +52,43 @@ def clean_for_speech(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _get_piper_voice():
-    global _piper_voice
-    if _piper_voice is not None:
-        return _piper_voice or None
+def _get_piper_voice(lang: str):
+    cached = _piper_voices.get(lang)
+    if cached is not None:
+        return cached or None
     with _piper_lock:
-        if _piper_voice is not None:
-            return _piper_voice or None
+        cached = _piper_voices.get(lang)
+        if cached is not None:
+            return cached or None
         try:
             from huggingface_hub import hf_hub_download
             from piper.voice import PiperVoice
 
             config.PIPER_MODEL_DIR.mkdir(parents=True, exist_ok=True)
-            base = config.PIPER_VOICE_BASENAME
+            base = config.PIPER_VOICE_BASENAMES[lang]
             onnx_path = hf_hub_download(
                 repo_id=config.PIPER_VOICE_REPO, filename=f"{base}.onnx", local_dir=str(config.PIPER_MODEL_DIR)
             )
             json_path = hf_hub_download(
                 repo_id=config.PIPER_VOICE_REPO, filename=f"{base}.onnx.json", local_dir=str(config.PIPER_MODEL_DIR)
             )
-            _piper_voice = PiperVoice.load(onnx_path, config_path=json_path)
+            voice = PiperVoice.load(onnx_path, config_path=json_path)
         except Exception:
-            get_logger().exception("Failed to load the offline Piper voice")
-            _piper_voice = False
-    return _piper_voice or None
+            get_logger().exception("Failed to load the offline Piper voice for '%s'", lang)
+            voice = False
+        _piper_voices[lang] = voice
+    return voice or None
 
 
 class SpeakWorker(QObject):
-    """Synthesizes and plays `text` on a background thread."""
+    """Synthesizes and plays `text` (in `lang`) on a background thread."""
 
     finished_speaking = Signal()
 
-    def __init__(self, text: str, parent=None):
+    def __init__(self, text: str, lang: str = config.DEFAULT_LANGUAGE, parent=None):
         super().__init__(parent)
         self._text = clean_for_speech(text)
+        self._lang = lang if lang in config.SUPPORTED_LANGUAGES else config.DEFAULT_LANGUAGE
 
     def start(self):
         threading.Thread(target=self._run, daemon=True).start()
@@ -105,7 +110,7 @@ class SpeakWorker(QObject):
         self.finished_speaking.emit()
 
     def _speak_piper(self) -> bool:
-        voice = _get_piper_voice()
+        voice = _get_piper_voice(self._lang)
         if voice is None:
             return False
         try:
@@ -126,8 +131,9 @@ class SpeakWorker(QObject):
             import pyttsx3
 
             engine = pyttsx3.init()
+            hint = config.TTS_FALLBACK_VOICE_HINTS.get(self._lang, "")
             for voice in engine.getProperty("voices"):
-                if config.TTS_FALLBACK_VOICE_HINT in voice.id.lower():
+                if hint in voice.id.lower():
                     engine.setProperty("voice", voice.id)
                     break
             engine.say(self._text)
@@ -142,7 +148,8 @@ class SpeakWorker(QObject):
         fd, name = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
 
-        communicate = edge_tts.Communicate(self._text, config.TTS_VOICE, rate=config.TTS_RATE)
+        voice = config.TTS_VOICES.get(self._lang, config.TTS_VOICES[config.DEFAULT_LANGUAGE])
+        communicate = edge_tts.Communicate(self._text, voice, rate=config.TTS_RATE)
         await communicate.save(name)
         return Path(name)
 

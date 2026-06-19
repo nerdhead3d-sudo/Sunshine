@@ -1,7 +1,8 @@
 """Our own tiny tokenizer + vocabulary for the mood classifier — plain
 whitespace/punctuation splitting and a word->index table built directly
 from the training set, with no pretrained tokenizer or embeddings
-involved."""
+involved. The accented-letter range covers Italian/French/Spanish/
+Portuguese accents; ß is added explicitly for German."""
 
 import json
 import re
@@ -10,7 +11,7 @@ from pathlib import Path
 PAD = "<pad>"
 UNK = "<unk>"
 
-_TOKEN_RE = re.compile(r"[a-zà-ù']+", re.IGNORECASE)
+_TOKEN_RE = re.compile(r"[a-zà-ÿß']+", re.IGNORECASE)
 
 
 def tokenize(text: str) -> list[str]:

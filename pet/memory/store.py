@@ -14,6 +14,16 @@ class MemoryStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
         self._conn.commit()
+        self._migrate()
+
+    def _migrate(self):
+        # Databases created before the multi-language feature don't have
+        # this column yet; CREATE TABLE IF NOT EXISTS won't add it.
+        try:
+            self._conn.execute("ALTER TABLE identities ADD COLUMN language TEXT")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     def close(self):
         self._conn.close()
@@ -59,6 +69,14 @@ class MemoryStore:
         self._conn.execute("UPDATE identities SET mood = ? WHERE id = ?", (new_mood, identity_id))
         self._conn.commit()
         return new_mood
+
+    def get_language(self, identity_id: int) -> str | None:
+        row = self._conn.execute("SELECT language FROM identities WHERE id = ?", (identity_id,)).fetchone()
+        return row["language"] if row else None
+
+    def set_language(self, identity_id: int, lang: str | None):
+        self._conn.execute("UPDATE identities SET language = ? WHERE id = ?", (lang, identity_id))
+        self._conn.commit()
 
     # -- messages -------------------------------------------------------
 

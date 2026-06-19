@@ -9,11 +9,17 @@ OLLAMA_HOST = "http://127.0.0.1:11434"
 OLLAMA_MODEL = "llama3.2:1b"
 
 # Mood classifier: a small neural network trained from scratch by us (see
-# pet/mood/train.py and pet/mood/dataset.py) on a hand-written Italian
-# dataset, not a pretrained model. Updates each identity's "mood" score.
+# pet/mood/train.py and pet/mood/datasets/<lang>.py) on hand-written
+# datasets, not a pretrained model. One model per language. Updates each
+# identity's "mood" score.
 MOOD_MODEL_DIR = BASE_DIR / "pet" / "mood" / "model"
 MOOD_EMA_ALPHA = 0.3  # how much each new reading shifts the running mood average
 MOOD_HAPPY_REACT_THRESHOLD = 0.4  # running mood score above which the pet plays a happy reaction
+
+# Languages: Italian is the default and has by far the richest mood
+# dataset; the others are smaller starting points (see pet/mood/datasets/).
+SUPPORTED_LANGUAGES = ["it", "en", "fr", "es", "de", "pt"]
+DEFAULT_LANGUAGE = "it"
 
 # Chat brain: fully offline local model (gpt4all, no server/compiler/CUDA
 # needed) by default, instead of depending on a running Ollama instance.
@@ -33,17 +39,48 @@ PET_NAME = "Sunshine"
 # (typically no internet) falls back to Piper, an offline neural voice
 # (good quality, ~60MB model downloaded from Hugging Face once); if even
 # that fails, falls back further to robotic offline pyttsx3/SAPI5. STT via
-# faster-whisper, fully offline (model downloaded from Hugging Face once).
-TTS_VOICE = "it-IT-IsabellaNeural"
+# faster-whisper, fully offline (model downloaded from Hugging Face once),
+# auto-detecting the spoken language unless fixed (see SUPPORTED_LANGUAGES
+# and VoiceChatController's language-switch voice commands).
 TTS_RATE = "+25%"   # edge-tts speaking-rate offset; "+0%" for the normal speed
 PIPER_VOICE_REPO = "rhasspy/piper-voices"
-PIPER_VOICE_BASENAME = "it/it_IT/paola/medium/it_IT-paola-medium"
 PIPER_MODEL_DIR = BASE_DIR / "pet" / "local_models" / "piper"
-TTS_FALLBACK_VOICE_HINT = "it-it"  # substring matched against offline SAPI5 voice ids (pyttsx3)
 STT_SAMPLE_RATE = 16000
-STT_LANGUAGE_CODE = "it"  # ISO 639-1, used by faster-whisper
 STT_WHISPER_MODEL = "small"  # tiny/base/small/medium: bigger = more accurate but slower/heavier
 STT_WHISPER_MODEL_DIR = BASE_DIR / "pet" / "local_models" / "whisper"
+
+LANGUAGE_NAMES = {
+    "it": "italiano", "en": "inglese", "fr": "francese",
+    "es": "spagnolo", "de": "tedesco", "pt": "portoghese",
+}
+
+# edge-tts voice id per language (online, best quality).
+TTS_VOICES = {
+    "it": "it-IT-IsabellaNeural",
+    "en": "en-US-AriaNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "es": "es-ES-ElviraNeural",
+    "de": "de-DE-KatjaNeural",
+    "pt": "pt-BR-FranciscaNeural",
+}
+
+# Piper voice basename per language (offline fallback, see rhasspy/piper-voices).
+PIPER_VOICE_BASENAMES = {
+    "it": "it/it_IT/paola/medium/it_IT-paola-medium",
+    "en": "en/en_US/lessac/medium/en_US-lessac-medium",
+    "fr": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium",
+    "es": "es/es_ES/davefx/medium/es_ES-davefx-medium",
+    "de": "de/de_DE/thorsten/medium/de_DE-thorsten-medium",
+    "pt": "pt/pt_BR/faber/medium/pt_BR-faber-medium",
+}
+
+# Substring matched against offline SAPI5 voice ids (pyttsx3), last-resort
+# fallback; only "it-it" is confirmed installed on this machine, others
+# will just fall through to whatever default voice Windows has installed.
+TTS_FALLBACK_VOICE_HINTS = {
+    "it": "it-it", "en": "en-us", "fr": "fr-fr",
+    "es": "es-es", "de": "de-de", "pt": "pt-br",
+}
 
 # Continuous listening (energy-based voice activity detection): how loud a
 # block must be relative to the calibrated noise floor to count as speech,
@@ -97,3 +134,12 @@ AUTO_LEARN_SAMPLE_COUNT = 40       # consecutive unknown-face frames before auto
 AUTO_LEARN_MAX_FRAME_DIFF = 40.0   # mean abs pixel diff vs. last buffered crop; above this, treat
                                     # it as a different face and restart the buffer (avoids merging
                                     # two different people who alternate in front of the webcam)
+
+# Appearance-change detection: heuristic pixel-diff comparison between the
+# current face crop and the first sample ever saved for that identity (no
+# real semantic understanding of "haircut" vs "beard" — just "something
+# changed a lot in this region of the face"). Expect false positives from
+# lighting/angle changes; thresholds are deliberately conservative.
+APPEARANCE_HAIR_FRACTION = 0.25    # top fraction of the 200x200 face crop = hair/forehead region
+APPEARANCE_BEARD_FRACTION = 0.30   # bottom fraction = chin/beard region
+APPEARANCE_DIFF_THRESHOLD = 45.0   # mean abs pixel diff above which a region counts as "changed"

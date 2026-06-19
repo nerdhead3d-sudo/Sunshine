@@ -29,6 +29,7 @@ class RecognitionService(QThread):
     identity_recognized = Signal(str, str)  # name, kind ("person" | "cat")
     identity_learned = Signal(str, str)     # name, kind
     identity_lost = Signal()
+    appearance_changed = Signal(str, str)   # name, region ("capelli" | "barba") — heuristic, see _check_appearance
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -55,6 +56,9 @@ class RecognitionService(QThread):
 
         self._learn_buffers = {"person": [], "cat": []}
         self._learn_streak = {"person": 0, "cat": 0}
+
+        self._appearance_baselines: dict[str, np.ndarray] = {}
+        self._appearance_announced: set[tuple[str, str]] = set()
 
     @staticmethod
     def _load_model(kind: str):
@@ -142,6 +146,8 @@ class RecognitionService(QThread):
                 self._learn_streak[kind] = 0
                 if candidate is None:
                     candidate = (name, kind)
+                if kind == "person":
+                    self._check_appearance(name, roi)
             else:
                 self._accumulate_unknown(kind, roi)
 
@@ -199,6 +205,49 @@ class RecognitionService(QThread):
         while f"{prefix}{index}" in existing:
             index += 1
         return f"{prefix}{index}"
+
+    # -- appearance change detection (heuristic, pixel-diff based) ----------
+
+    def _check_appearance(self, name: str, roi):
+        """Compares the current face crop to the first sample ever saved
+        for this identity, region by region (hair/forehead vs. chin), and
+        announces once (per region, per run) if either changed enough.
+        This is a crude pixel-difference heuristic, not real semantic
+        understanding — lighting and angle changes can trigger false
+        positives, so thresholds are deliberately conservative."""
+        baseline = self._appearance_baselines.get(name)
+        if baseline is None:
+            baseline = self._load_appearance_baseline(name)
+            if baseline is None:
+                return
+            self._appearance_baselines[name] = baseline
+
+        height = roi.shape[0]
+        hair_h = int(height * config.APPEARANCE_HAIR_FRACTION)
+        beard_h = int(height * config.APPEARANCE_BEARD_FRACTION)
+
+        hair_diff = self._frame_diff(roi[:hair_h], baseline[:hair_h])
+        beard_diff = self._frame_diff(roi[-beard_h:], baseline[-beard_h:])
+
+        if hair_diff > config.APPEARANCE_DIFF_THRESHOLD and (name, "capelli") not in self._appearance_announced:
+            self._appearance_announced.add((name, "capelli"))
+            self.appearance_changed.emit(name, "capelli")
+        elif beard_diff > config.APPEARANCE_DIFF_THRESHOLD and (name, "barba") not in self._appearance_announced:
+            self._appearance_announced.add((name, "barba"))
+            self.appearance_changed.emit(name, "barba")
+
+    @staticmethod
+    def _load_appearance_baseline(name: str):
+        sample_dir = config.RECOGNITION_SAMPLES_DIR / "person" / name
+        if not sample_dir.exists():
+            return None
+        files = sorted(sample_dir.glob("*.png"))
+        if not files:
+            return None
+        img = cv2.imread(str(files[0]), cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return None
+        return cv2.resize(img, (200, 200))
 
     # -- debounced candidate tracking ---------------------------------------
 

@@ -1,0 +1,125 @@
+"""Hand-written German training data for the mood classifier — own
+sentences, no external dataset, no pretrained embeddings. Smaller than
+the Italian set on purpose (a starting point, easy to expand later)."""
+
+LABEL_VALENCE = {
+    "gluecklich": 1.0,
+    "liebevoll": 0.8,
+    "aufgeregt": 0.6,
+    "neutral": 0.0,
+    "gelangweilt": -0.3,
+    "traurig": -0.7,
+    "wuetend": -1.0,
+}
+
+LABELS = list(LABEL_VALENCE.keys())
+
+EXAMPLES: list[tuple[str, str]] = [
+    # gluecklich
+    ("ich bin heute so glücklich", "gluecklich"),
+    ("was für ein schöner Tag, ich bin überglücklich", "gluecklich"),
+    ("ich fühle mich gerade richtig gut", "gluecklich"),
+    ("ich freue mich riesig dich zu sehen", "gluecklich"),
+    ("was für eine Freude, alles ist gut gelaufen", "gluecklich"),
+    ("ich fühle mich voller positiver Energie", "gluecklich"),
+    ("ich habe die Prüfung bestanden, ich bin so glücklich", "gluecklich"),
+    ("ich strahle heute vor Glück", "gluecklich"),
+    ("was für eine schöne Überraschung, ich bin begeistert", "gluecklich"),
+    ("ich kann einfach nicht aufhören zu lächeln", "gluecklich"),
+    ("das ist der schönste Tag des Jahres", "gluecklich"),
+    ("ich bin voller Freude", "gluecklich"),
+    ("ich habe den Job bekommen, ich bin überglücklich", "gluecklich"),
+    ("wir haben das Spiel gewonnen, ich bin begeistert", "gluecklich"),
+
+    # liebevoll
+    ("ich liebe dich so sehr", "liebevoll"),
+    ("ich vermisse dich so sehr", "liebevoll"),
+    ("du bist das Süßeste was ich habe", "liebevoll"),
+    ("ich würde dich jetzt fest umarmen", "liebevoll"),
+    ("ich bin dir sehr zugetan", "liebevoll"),
+    ("ich würde dich gerne ein bisschen knuddeln", "liebevoll"),
+    ("du bist mir wichtig", "liebevoll"),
+    ("du gibst mir das Gefühl geliebt zu werden", "liebevoll"),
+    ("ich denke immer liebevoll an dich", "liebevoll"),
+    ("du bist mein kleiner Schatz", "liebevoll"),
+    ("ich liebe es in deiner Nähe zu sein", "liebevoll"),
+    ("danke dass du immer da bist", "liebevoll"),
+    ("du bist meine Lieblingsperson", "liebevoll"),
+    ("du erwärmst mein Herz", "liebevoll"),
+
+    # aufgeregt
+    ("ich kann nicht mehr stillsitzen", "aufgeregt"),
+    ("etwas Unglaubliches ist gerade passiert", "aufgeregt"),
+    ("ich kann das Wochenende kaum erwarten", "aufgeregt"),
+    ("ich bin total motiviert", "aufgeregt"),
+    ("wow ich kann es nicht glauben, das ist unglaublich", "aufgeregt"),
+    ("ich bin viel zu neugierig das herauszufinden", "aufgeregt"),
+    ("los, lass uns sofort gehen", "aufgeregt"),
+    ("ich bin viel zu aufgeregt wegen der Überraschung", "aufgeregt"),
+    ("das ist zu gut, ich kann mich nicht beruhigen", "aufgeregt"),
+    ("ich bin bereit für das Abenteuer", "aufgeregt"),
+    ("ich zittere vor Aufregung", "aufgeregt"),
+    ("endlich ist der große Tag da, ich bin total aufgedreht", "aufgeregt"),
+
+    # neutral
+    ("heute ist Dienstag", "neutral"),
+    ("ich war heute Morgen einkaufen", "neutral"),
+    ("ich muss eine Arbeit fertigstellen", "neutral"),
+    ("der Computer ist normal gestartet", "neutral"),
+    ("ich gehe duschen", "neutral"),
+    ("ich habe morgen um zehn ein Meeting", "neutral"),
+    ("ich lese gerade ein Buch", "neutral"),
+    ("ich habe Mittagessen vorbereitet", "neutral"),
+    ("heute ist es bewölkt", "neutral"),
+    ("ich habe meine E-Mails geprüft", "neutral"),
+    ("ich räume meinen Schreibtisch auf", "neutral"),
+    ("ich höre einen Podcast", "neutral"),
+    ("ich habe heute keine besonderen Pläne", "neutral"),
+    ("ich habe meinen Kalender aktualisiert", "neutral"),
+
+    # gelangweilt
+    ("mir ist so langweilig, ich weiß nicht was ich tun soll", "gelangweilt"),
+    ("dieser Tag will einfach nicht enden", "gelangweilt"),
+    ("ich habe keine Lust irgendetwas zu tun", "gelangweilt"),
+    ("ich bin es leid hier nichts zu tun", "gelangweilt"),
+    ("alles erscheint mir heute eintönig", "gelangweilt"),
+    ("mir ist langweilig wenn ich die Decke anstarre", "gelangweilt"),
+    ("es gibt nichts Interessantes zu tun", "gelangweilt"),
+    ("dieses Warten zieht sich wirklich hin", "gelangweilt"),
+    ("ich finde nichts Lustiges zu tun", "gelangweilt"),
+    ("es ist hier zum Sterben langweilig", "gelangweilt"),
+    ("ich habe überhaupt keine Lust mich zu bewegen", "gelangweilt"),
+    ("mich interessiert heute gar nichts mehr", "gelangweilt"),
+
+    # traurig
+    ("ich bin heute sehr traurig", "traurig"),
+    ("ich fühle mich niedergeschlagen", "traurig"),
+    ("ich habe Lust zu weinen", "traurig"),
+    ("ich bin erschöpft und ohne Energie", "traurig"),
+    ("ich fühle mich einsam und traurig", "traurig"),
+    ("heute war ein schwerer, melancholischer Tag", "traurig"),
+    ("ich kann nicht aufhören traurig zu sein", "traurig"),
+    ("ich bin enttäuscht und verbittert", "traurig"),
+    ("ich vermisse dich so sehr und das macht mich traurig", "traurig"),
+    ("mein Herz fühlt sich heute schwer an", "traurig"),
+    ("ich bin erschüttert von dem was passiert ist", "traurig"),
+    ("ich fühle mich innerlich leer", "traurig"),
+    ("ich habe meinen Job verloren und weiß nicht was ich tun soll", "traurig"),
+    ("mein Hund ist diese Woche gestorben, ich bin am Boden zerstört", "traurig"),
+
+    # wuetend
+    ("ich bin gerade wirklich wütend", "wuetend"),
+    ("du hast mich richtig wütend gemacht", "wuetend"),
+    ("ich bin nervös und gereizt", "wuetend"),
+    ("ich kann nicht mehr, ich bin völlig genervt", "wuetend"),
+    ("das macht mich total rasend", "wuetend"),
+    ("ich bin extrem wütend wegen dem was du gemacht hast", "wuetend"),
+    ("ich verliere die Geduld mit dir", "wuetend"),
+    ("ich bin empört über diese Situation", "wuetend"),
+    ("du gehst mir wirklich auf die Nerven", "wuetend"),
+    ("mir kocht das Blut vor Wut", "wuetend"),
+    ("ich bin am Ende meiner Geduld", "wuetend"),
+    ("diese Ungerechtigkeit macht mich extrem wütend", "wuetend"),
+    ("sie haben meinen Flug gestrichen ohne mich zu informieren", "wuetend"),
+    ("der Kurier hat mein Paket verloren und niemand antwortet mir", "wuetend"),
+]

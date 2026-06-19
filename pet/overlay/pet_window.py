@@ -76,6 +76,7 @@ class PetWindow(QWidget):
         self.recognition = RecognitionService(self)
         self.recognition.identity_recognized.connect(self._on_identity_recognized)
         self.recognition.identity_learned.connect(self._on_identity_learned)
+        self.recognition.appearance_changed.connect(self._on_appearance_changed)
         self.recognition.start()
 
         self.window_scan_timer = QTimer(self)
@@ -224,6 +225,14 @@ class PetWindow(QWidget):
     def _on_mood_changed(self, label: str, value: float):
         if value >= config.MOOD_HAPPY_REACT_THRESHOLD:
             self.state_machine.trigger_react(10)
+
+    def _on_appearance_changed(self, name: str, region: str):
+        if region == "capelli":
+            text = f"Ti sei tagliato i capelli, {name}?"
+        else:
+            text = f"Ti sei fatto la barba, {name}?"
+        self.voice_chat.announce(text)
+        self.state_machine.trigger_react(10)
 
     def _set_muted(self, muted: bool):
         self._muted = muted

@@ -1,0 +1,126 @@
+"""Hand-written Spanish training data for the mood classifier — own
+sentences, no external dataset, no pretrained embeddings. Smaller than
+the Italian set on purpose (a starting point, easy to expand later)."""
+
+LABEL_VALENCE = {
+    "feliz": 1.0,
+    "cariñoso": 0.8,
+    "emocionado": 0.6,
+    "neutral": 0.0,
+    "aburrido": -0.3,
+    "triste": -0.7,
+    "enfadado": -1.0,
+}
+
+LABELS = list(LABEL_VALENCE.keys())
+
+EXAMPLES: list[tuple[str, str]] = [
+    # feliz
+    ("estoy muy feliz hoy", "feliz"),
+    ("qué día tan bonito, estoy en las nubes", "feliz"),
+    ("me siento realmente bien ahora", "feliz"),
+    ("estoy encantado de verte", "feliz"),
+    ("qué alegría, todo salió perfecto", "feliz"),
+    ("me siento lleno de energía positiva", "feliz"),
+    ("aprobé el examen, estoy muy feliz", "feliz"),
+    ("hoy estoy radiante de felicidad", "feliz"),
+    ("qué sorpresa tan bonita, estoy encantado", "feliz"),
+    ("no puedo dejar de sonreír", "feliz"),
+    ("es el día más bonito del año", "feliz"),
+    ("estoy lleno de alegría", "feliz"),
+    ("consegui el trabajo, estoy en las nubes", "feliz"),
+    ("ganamos el partido, estoy encantado", "feliz"),
+    ("por fin ahorré suficiente para el viaje, qué alegría", "feliz"),
+
+    # cariñoso
+    ("te quiero muchísimo", "cariñoso"),
+    ("te extraño mucho", "cariñoso"),
+    ("eres lo más dulce que tengo", "cariñoso"),
+    ("te abrazaría fuerte ahora mismo", "cariñoso"),
+    ("te tengo mucho cariño", "cariñoso"),
+    ("me gustaría abrazarte un poco", "cariñoso"),
+    ("eres importante para mí", "cariñoso"),
+    ("me haces sentir querido", "cariñoso"),
+    ("siempre pienso en ti con cariño", "cariñoso"),
+    ("eres mi pequeño tesoro", "cariñoso"),
+    ("me encanta estar cerca de ti", "cariñoso"),
+    ("gracias por estar siempre ahí", "cariñoso"),
+    ("eres mi persona favorita", "cariñoso"),
+    ("me calientas el corazón", "cariñoso"),
+
+    # emocionado
+    ("no puedo quedarme quieto", "emocionado"),
+    ("acaba de pasar algo increíble", "emocionado"),
+    ("no puedo esperar a que llegue el fin de semana", "emocionado"),
+    ("estoy súper motivado", "emocionado"),
+    ("wow no puedo creerlo, es increíble", "emocionado"),
+    ("tengo demasiada curiosidad por descubrirlo", "emocionado"),
+    ("vamos, vamos ahora mismo", "emocionado"),
+    ("estoy demasiado emocionado por la sorpresa", "emocionado"),
+    ("es demasiado bueno, no puedo calmarme", "emocionado"),
+    ("estoy listo para la aventura", "emocionado"),
+    ("estoy temblando de emoción", "emocionado"),
+    ("por fin llegó el gran día, estoy súper cargado", "emocionado"),
+
+    # neutral
+    ("hoy es martes", "neutral"),
+    ("fui a comprar esta mañana", "neutral"),
+    ("tengo que terminar un trabajo", "neutral"),
+    ("el ordenador se encendió normalmente", "neutral"),
+    ("voy a darme una ducha", "neutral"),
+    ("tengo una reunión a las diez mañana", "neutral"),
+    ("estoy leyendo un libro", "neutral"),
+    ("preparé el almuerzo", "neutral"),
+    ("hoy está nublado", "neutral"),
+    ("revisé mi correo", "neutral"),
+    ("estoy ordenando mi escritorio", "neutral"),
+    ("estoy escuchando un podcast", "neutral"),
+    ("no tengo planes particulares hoy", "neutral"),
+    ("actualicé mi calendario", "neutral"),
+
+    # aburrido
+    ("estoy muy aburrido, no sé qué hacer", "aburrido"),
+    ("este día no se acaba nunca", "aburrido"),
+    ("no tengo ganas de hacer nada", "aburrido"),
+    ("estoy cansado de estar aquí sin hacer nada", "aburrido"),
+    ("todo me parece monótono hoy", "aburrido"),
+    ("me aburro mirando el techo", "aburrido"),
+    ("no hay nada interesante que hacer", "aburrido"),
+    ("esta espera es realmente larga", "aburrido"),
+    ("no encuentro nada divertido que hacer", "aburrido"),
+    ("es un aburrimiento mortal aquí", "aburrido"),
+    ("no tengo ninguna gana de moverme", "aburrido"),
+    ("ya nada me interesa hoy", "aburrido"),
+
+    # triste
+    ("estoy muy triste hoy", "triste"),
+    ("me siento deprimido", "triste"),
+    ("tengo ganas de llorar", "triste"),
+    ("estoy agotado y sin energía", "triste"),
+    ("me siento solo y triste", "triste"),
+    ("hoy ha sido un día pesado y melancólico", "triste"),
+    ("no puedo dejar de estar triste", "triste"),
+    ("estoy decepcionado y amargado", "triste"),
+    ("te extraño tanto que me pone triste", "triste"),
+    ("tengo el corazón pesado hoy", "triste"),
+    ("estoy destrozado por lo que pasó", "triste"),
+    ("me siento vacío por dentro", "triste"),
+    ("perdí mi trabajo y no sé qué hacer", "triste"),
+    ("mi perro murió esta semana, estoy devastado", "triste"),
+
+    # enfadado
+    ("estoy furioso ahora mismo", "enfadado"),
+    ("me hiciste enfadar mucho", "enfadado"),
+    ("estoy nervioso e irritado", "enfadado"),
+    ("no puedo más, estoy exasperado", "enfadado"),
+    ("esto me hace ponerme como una fiera", "enfadado"),
+    ("estoy muy enfadado por lo que hiciste", "enfadado"),
+    ("estoy perdiendo la paciencia contigo", "enfadado"),
+    ("estoy indignado por esta situación", "enfadado"),
+    ("me sacas de quicio", "enfadado"),
+    ("me hierve la sangre de rabia", "enfadado"),
+    ("estoy al límite de mi paciencia", "enfadado"),
+    ("esta injusticia me enfada muchísimo", "enfadado"),
+    ("cancelaron mi vuelo sin avisarme siquiera", "enfadado"),
+    ("el mensajero perdió mi paquete y nadie me responde", "enfadado"),
+]

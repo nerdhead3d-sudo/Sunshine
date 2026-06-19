@@ -1,0 +1,125 @@
+"""Hand-written Portuguese training data for the mood classifier — own
+sentences, no external dataset, no pretrained embeddings. Smaller than
+the Italian set on purpose (a starting point, easy to expand later)."""
+
+LABEL_VALENCE = {
+    "feliz": 1.0,
+    "carinhoso": 0.8,
+    "animado": 0.6,
+    "neutro": 0.0,
+    "entediado": -0.3,
+    "triste": -0.7,
+    "irritado": -1.0,
+}
+
+LABELS = list(LABEL_VALENCE.keys())
+
+EXAMPLES: list[tuple[str, str]] = [
+    # feliz
+    ("estou tão feliz hoje", "feliz"),
+    ("que dia tão bonito, estou nas nuvens", "feliz"),
+    ("estou me sentindo muito bem agora", "feliz"),
+    ("estou encantado de te ver", "feliz"),
+    ("que alegria, tudo correu perfeitamente", "feliz"),
+    ("sinto-me repleto de energia positiva", "feliz"),
+    ("passei na prova, estou muito feliz", "feliz"),
+    ("hoje estou radiante de felicidade", "feliz"),
+    ("que surpresa tão linda, estou encantado", "feliz"),
+    ("não consigo parar de sorrir", "feliz"),
+    ("é o dia mais bonito do ano", "feliz"),
+    ("estou repleto de alegria", "feliz"),
+    ("consegui o emprego, estou nas nuvens", "feliz"),
+    ("ganhamos o jogo, estou muito feliz", "feliz"),
+
+    # carinhoso
+    ("eu te amo muito", "carinhoso"),
+    ("sinto muita falta de você", "carinhoso"),
+    ("você é a coisa mais doce que tenho", "carinhoso"),
+    ("eu te abraçaria forte agora mesmo", "carinhoso"),
+    ("sou muito apegado a você", "carinhoso"),
+    ("eu gostaria de te dar um abraço", "carinhoso"),
+    ("você é importante para mim", "carinhoso"),
+    ("você me faz sentir amado", "carinhoso"),
+    ("penso sempre em você com carinho", "carinhoso"),
+    ("você é meu pequeno tesouro", "carinhoso"),
+    ("adoro estar perto de você", "carinhoso"),
+    ("obrigado por estar sempre presente", "carinhoso"),
+    ("você é minha pessoa favorita", "carinhoso"),
+    ("você aquece meu coração", "carinhoso"),
+
+    # animado
+    ("não consigo ficar parado", "animado"),
+    ("acabou de acontecer algo incrível", "animado"),
+    ("não vejo a hora do fim de semana chegar", "animado"),
+    ("estou super motivado", "animado"),
+    ("uau não acredito, isso é incrível", "animado"),
+    ("estou demais curioso para descobrir isso", "animado"),
+    ("vamos, vamos agora mesmo", "animado"),
+    ("estou muito animado com a surpresa", "animado"),
+    ("é demais bom, não consigo me calmar", "animado"),
+    ("estou pronto para a aventura", "animado"),
+    ("estou tremendo de emoção", "animado"),
+    ("finalmente chegou o grande dia, estou muito animado", "animado"),
+
+    # neutro
+    ("hoje é terça-feira", "neutro"),
+    ("fui fazer compras esta manhã", "neutro"),
+    ("preciso terminar um trabalho", "neutro"),
+    ("o computador ligou normalmente", "neutro"),
+    ("vou tomar um banho", "neutro"),
+    ("tenho uma reunião às dez amanhã", "neutro"),
+    ("estou lendo um livro", "neutro"),
+    ("preparei o almoço", "neutro"),
+    ("está nublado hoje", "neutro"),
+    ("verifiquei meus emails", "neutro"),
+    ("estou organizando minha mesa", "neutro"),
+    ("estou ouvindo um podcast", "neutro"),
+    ("não tenho planos especiais hoje", "neutro"),
+    ("atualizei minha agenda", "neutro"),
+
+    # entediado
+    ("estou muito entediado, não sei o que fazer", "entediado"),
+    ("este dia parece que nunca vai acabar", "entediado"),
+    ("não tenho vontade de fazer nada", "entediado"),
+    ("estou cansado de ficar aqui sem fazer nada", "entediado"),
+    ("tudo me parece monótono hoje", "entediado"),
+    ("fico entediado olhando para o teto", "entediado"),
+    ("não há nada interessante para fazer", "entediado"),
+    ("essa espera está demorando demais", "entediado"),
+    ("não consigo achar nada divertido para fazer", "entediado"),
+    ("é um tédio mortal aqui", "entediado"),
+    ("não tenho nenhuma vontade de me mover", "entediado"),
+    ("nada me interessa mais hoje", "entediado"),
+
+    # triste
+    ("estou muito triste hoje", "triste"),
+    ("estou me sentindo deprimido", "triste"),
+    ("tenho vontade de chorar", "triste"),
+    ("estou exausto e sem energia", "triste"),
+    ("sinto-me sozinho e triste", "triste"),
+    ("hoje foi um dia pesado e melancólico", "triste"),
+    ("não consigo parar de estar triste", "triste"),
+    ("estou decepcionado e amargurado", "triste"),
+    ("sinto tanta falta de você que fico triste", "triste"),
+    ("meu coração está pesado hoje", "triste"),
+    ("estou arrasado com o que aconteceu", "triste"),
+    ("sinto-me vazio por dentro", "triste"),
+    ("perdi meu emprego e não sei o que fazer", "triste"),
+    ("meu cachorro morreu essa semana, estou devastado", "triste"),
+
+    # irritado
+    ("estou furioso agora mesmo", "irritado"),
+    ("você me deixou muito irritado", "irritado"),
+    ("estou nervoso e irritado", "irritado"),
+    ("não aguento mais, estou exasperado", "irritado"),
+    ("isso me deixa extremamente irritado", "irritado"),
+    ("estou muito irritado pelo que você fez", "irritado"),
+    ("estou perdendo a paciência com você", "irritado"),
+    ("estou indignado com essa situação", "irritado"),
+    ("você está me deixando muito nervoso", "irritado"),
+    ("meu sangue está fervendo de raiva", "irritado"),
+    ("estou no limite da minha paciência", "irritado"),
+    ("essa injustiça me deixa extremamente irritado", "irritado"),
+    ("cancelaram meu voo sem nem me avisar", "irritado"),
+    ("o entregador perdeu meu pacote e ninguém me responde", "irritado"),
+]

@@ -81,16 +81,45 @@ Con questa catena **l'intera app funziona offline** (chat, riconoscimento
 vocale e voce), con qualità migliore quando c'è internet e un degrado
 controllato (mai muto) quando non c'è.
 
+## Lingue
+
+Sunshine capisce e parla **italiano, inglese, francese, spagnolo, tedesco
+e portoghese** (`config.SUPPORTED_LANGUAGES`). Di default rileva la
+lingua automaticamente a ogni frase (`faster-whisper`); puoi anche
+fissarla a voce dicendo ad esempio "parla in inglese" / "speak english" /
+"parle en français" / "habla español" / "sprich deutsch" / "fala
+português" (riconosciuto indipendentemente dalla lingua in cui lo dici).
+Per tornare al rilevamento automatico: "torna automatico". La scelta
+viene **ricordata per ogni identità** (salvata in `pet_memory.db`) e
+recuperata ai riavvii.
+
+Ogni lingua ha la sua voce (edge-tts/Piper, `config.TTS_VOICES`/
+`PIPER_VOICE_BASENAMES`) e il suo classificatore di umore (vedi sotto).
+I comandi PC (sezione successiva) e un paio di risposte dirette ("chi
+sono io?") restano per ora solo in italiano: nelle altre lingue quelle
+frasi specifiche passano semplicemente al modello di chat, che risponde
+comunque nella lingua attiva.
+
 ## Umore (rete neurale nostra, allenata da zero)
 
 A differenza di tutto il resto (LLM, voce, STT: modelli pre-allenati da
 altri, solo scaricati e usati), il classificatore di umore è una piccola
-rete neurale **scritta e allenata da zero da noi** con PyTorch, su un
-dataset italiano scritto a mano (`pet/mood/dataset.py`, ~270 frasi, 7
-categorie: felice, affettuoso, eccitato, neutro, annoiato, triste,
-arrabbiato). Nessun peso pre-addestrato, nessun embedding esterno: solo
-tokenizzazione nostra (`pet/mood/vocab.py`) e una rete embedding + MLP
-(`pet/mood/model.py`) inizializzata a caso e allenata sul dataset.
+rete neurale **scritta e allenata da zero da noi** con PyTorch — un
+modello separato per ciascuna lingua, ognuno sul proprio dataset scritto
+a mano (`pet/mood/datasets/<lingua>.py`, 7 categorie ciascuno). Nessun
+peso pre-addestrato, nessun embedding esterno: solo tokenizzazione nostra
+(`pet/mood/vocab.py`) e una rete embedding + 3 strati nascosti +
+temperatura imparata (`pet/mood/model.py`, 10 tensori, ~20.000
+parametri), inizializzata a caso e allenata sul dataset.
+
+L'italiano è il più ricco (~950 frasi); le altre lingue sono punti di
+partenza più piccoli (~95-230 frasi ciascuna) — facili da ampliare
+aggiungendo righe al relativo file e riallenando:
+
+```powershell
+python -m pet.mood.train             # riallena tutte le lingue
+python -m pet.mood.train --lang en   # solo una
+```
 
 Ogni frase che dici viene classificata e aggiorna un punteggio di umore
 per la tua identità (colonna `mood` in `pet/data/pet_memory.db`, con una
@@ -99,11 +128,17 @@ l'umore è abbastanza positivo, Sunshine fa una piccola animazione di
 gioia. Il tono rilevato viene anche passato al modello di chat come
 contesto, così la risposta può tenerne conto.
 
-Per riaddestrare il modello dopo aver modificato il dataset:
+## Rilevamento cambiamenti d'aspetto (sperimentale)
 
-```powershell
-python -m pet.mood.train
-```
+Quando riconosce una persona già nota, Sunshine confronta periodicamente
+il volto attuale con la prima foto mai salvata per quell'identità,
+regione per regione (fronte/capelli vs. mento/barba), tramite una
+semplice differenza media dei pixel — niente di semantico, solo "qui è
+cambiato parecchio". Se il cambiamento supera una soglia (config.py,
+`APPEARANCE_*`), te lo chiede a voce ("ti sei tagliato i capelli?",
+"ti sei fatto la barba?"), una volta per regione a sessione. È
+volutamente euristico: cambi di luce o angolazione possono generare
+falsi positivi.
 
 ## Comandi PC (stile "Alexa")
 
@@ -173,7 +208,8 @@ terminale.
 python -m unittest discover -s tests
 ```
 
-Coprono la logica pura (parsing dei comandi vocali in `pet/skills/intents.py`
-e la macchina a stati del comportamento in `pet/behavior/state_machine.py`);
-il resto (overlay Qt, webcam, audio) richiede un avvio reale dell'app per
-essere verificato.
+Coprono la logica pura: parsing dei comandi vocali (`pet/skills/intents.py`),
+rilevamento dei comandi di cambio lingua (`pet/skills/language_commands.py`),
+il classificatore di umore (`pet/mood/classifier.py`) e la macchina a stati
+del comportamento (`pet/behavior/state_machine.py`). Il resto (overlay Qt,
+webcam, audio) richiede un avvio reale dell'app per essere verificato.

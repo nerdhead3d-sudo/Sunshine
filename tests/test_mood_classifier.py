@@ -1,20 +1,20 @@
 import unittest
 
 from pet.mood.classifier import get_classifier
-from pet.mood.dataset import LABEL_VALENCE
+from pet.mood.datasets.it import LABEL_VALENCE
 
 
 class MoodClassifierTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.classifier = get_classifier()
+        cls.classifier = get_classifier("it")
         if cls.classifier is None:
             raise unittest.SkipTest("modello non addestrato: esegui 'python -m pet.mood.train' prima dei test")
 
     def test_classifies_training_examples_correctly(self):
-        # The network is tiny and trained on ~140 examples on purpose (see
-        # pet/mood/dataset.py): it should at least nail sentences that
-        # closely match what it was trained on.
+        # The network is small and trained on our own dataset (see
+        # pet/mood/datasets/it.py): it should at least nail sentences
+        # that closely match what it was trained on.
         cases = [
             ("sono felicissimo oggi", "felice"),
             ("ti voglio tanto bene", "affettuoso"),
