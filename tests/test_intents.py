@@ -46,6 +46,16 @@ class IntentsTests(unittest.TestCase):
             self.assertEqual(reply, "Apro blocco note.")
             self.assertIsNone(intents.try_handle("apri marziano", self._sched))
 
+    def test_open_app_disabled_for_unrecognized_speaker(self):
+        with mock.patch.object(intents.commands, "open_app_or_site") as open_app:
+            reply = intents.try_handle("apri il blocco note", self._sched, allow_open_apps=False)
+            self.assertIsNone(reply)
+            open_app.assert_not_called()
+
+    def test_other_commands_still_work_for_unrecognized_speaker(self):
+        reply = intents.try_handle("che ore sono", self._sched, allow_open_apps=False)
+        self.assertIsNotNone(reply)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,10 +24,13 @@ def _normalize(text: str) -> str:
     return t
 
 
-def try_handle(text: str, schedule_announcement: ScheduleFn) -> str | None:
+def try_handle(text: str, schedule_announcement: ScheduleFn, allow_open_apps: bool = True) -> str | None:
     """Returns a spoken reply if `text` matched a known command, else None.
     `schedule_announcement(seconds, text)` is used for delayed replies
-    (timers/reminders)."""
+    (timers/reminders). `allow_open_apps=False` disables the "apri X"
+    command (the one with real-world side effects — launching programs or
+    websites) so it doesn't fire for an unrecognized speaker; everything
+    else (info, volume, reminders) stays available regardless."""
     t = _normalize(text)
 
     if re.search(r"\bche ore (sono|è)\b|\bche ora è\b|\bdimmi l'ora\b", t):
@@ -87,10 +90,11 @@ def try_handle(text: str, schedule_announcement: ScheduleFn) -> str | None:
         schedule_announcement(seconds, "Timer scaduto!")
         return f"Timer impostato per {amount} {unit}."
 
-    match = re.search(r"\b(?:apri|aprire|apri(?:mi)?)\s+(?:il |la |lo |l['’])?([\w' àèéìòù]+)$", t)
-    if match:
-        target = match.group(1).strip()
-        if commands.open_app_or_site(target):
-            return f"Apro {target}."
+    if allow_open_apps:
+        match = re.search(r"\b(?:apri|aprire|apri(?:mi)?)\s+(?:il |la |lo |l['’])?([\w' àèéìòù]+)$", t)
+        if match:
+            target = match.group(1).strip()
+            if commands.open_app_or_site(target):
+                return f"Apro {target}."
 
     return None

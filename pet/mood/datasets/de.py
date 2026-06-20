@@ -122,4 +122,90 @@ EXAMPLES: list[tuple[str, str]] = [
     ("diese Ungerechtigkeit macht mich extrem wütend", "wuetend"),
     ("sie haben meinen Flug gestrichen ohne mich zu informieren", "wuetend"),
     ("der Kurier hat mein Paket verloren und niemand antwortet mir", "wuetend"),
+
+    # --- zweite Runde: mehr Vielfalt ---
+
+    # gluecklich
+    ("ich habe einen neuen Job gefunden, ich bin so glücklich", "gluecklich"),
+    ("unser Team hat gewonnen, ich bin überglücklich", "gluecklich"),
+    ("ich habe endlich genug für den Urlaub gespart", "gluecklich"),
+    ("meine Tochter hat heute ihre ersten Schritte gemacht, ich bin gerührt", "gluecklich"),
+    ("der Arzt hat gesagt es geht mir gut, was für eine Erleichterung", "gluecklich"),
+    ("ich hatte einen fantastischen Abend mit Freunden", "gluecklich"),
+    ("wir haben unser erstes Haus gekauft, ich könnte nicht glücklicher sein", "gluecklich"),
+    ("ich habe das Vorstellungsgespräch bestanden, ich bin überglücklich", "gluecklich"),
+    ("mein Neffe wurde heute geboren, was für eine große Freude", "gluecklich"),
+    ("ich habe den Kredit endlich abbezahlt, was für eine Erleichterung", "gluecklich"),
+    ("wir hatten trotz des Wetters ein perfektes Picknick", "gluecklich"),
+    ("ich habe eine Nachricht erhalten die meinen Tag erhellt hat", "gluecklich"),
+
+    # liebevoll
+    ("meine Mutter ruft mich jeden Sonntag an nur um zu fragen wie es mir geht", "liebevoll"),
+    ("ich würde dir immer eine Blume bringen wenn du traurig bist", "liebevoll"),
+    ("mein bester Freund erinnert sich immer an wichtige Daten für mich", "liebevoll"),
+    ("ich möchte immer deine Schulter sein auf die du dich stützen kannst", "liebevoll"),
+    ("meine Katze schläft immer zu meinen Füßen, ich liebe sie sehr", "liebevoll"),
+    ("ich würde dir jeden Abend schreiben nur um dir gute Nacht zu sagen", "liebevoll"),
+    ("meine Schwester hat mich immer beschützt, ich bin ihr sehr verbunden", "liebevoll"),
+    ("ich möchte immer in den wichtigen Momenten deines Lebens da sein", "liebevoll"),
+    ("mein Großvater erzählt mir immer wunderbare Geschichten", "liebevoll"),
+    ("ich denke zärtlich an dich jedes Mal wenn ich dieses Lied höre", "liebevoll"),
+
+    # aufgeregt
+    ("morgen fahre ich endlich auf die Reise auf die ich seit einem Jahr warte", "aufgeregt"),
+    ("ich habe gerade die Tickets für das Konzert gebucht, ich bin total aufgeregt", "aufgeregt"),
+    ("morgen beginnt mein erster Arbeitstag, ich bin sehr nervös", "aufgeregt"),
+    ("unser Team spielt heute Abend das Finale, ich bin viel zu aufgeregt", "aufgeregt"),
+    ("ich habe gerade erfahren dass wir in den Freizeitpark gehen", "aufgeregt"),
+    ("morgen sehe ich mein Lieblingsteam live spielen", "aufgeregt"),
+    ("der große Tag ist endlich da, ich kann es nicht fassen", "aufgeregt"),
+    ("ich kann nicht schlafen weil ich so ungeduldig bin", "aufgeregt"),
+    ("morgen ist mein Geburtstag und ich habe eine große Feier organisiert", "aufgeregt"),
+    ("wir fahren dieses Wochenende in die Berge, ich kann es kaum erwarten", "aufgeregt"),
+
+    # neutral
+    ("ich habe heute Morgen getankt", "neutral"),
+    ("ich fülle ein Formular für die Versicherung aus", "neutral"),
+    ("ich habe nächste Woche einen Arzttermin", "neutral"),
+    ("ich schaue mir aus Neugier Flugpreise an", "neutral"),
+    ("ich habe dieses Wochenende das Motoröl gewechselt", "neutral"),
+    ("ich schaue mir ein Tutorial an um den Wasserhahn zu reparieren", "neutral"),
+    ("ich habe mein Telefonabonnement verlängert", "neutral"),
+    ("ich überlege was ich zum Abendessen koche", "neutral"),
+    ("ich habe ein Paket bei der Post abgeholt", "neutral"),
+    ("ich mache die Gartenpflege", "neutral"),
+
+    # gelangweilt
+    ("ich warte seit einer Stunde in der Schlange und nichts passiert", "gelangweilt"),
+    ("dieses Meeting zieht sich ohne zu einem Ergebnis zu kommen", "gelangweilt"),
+    ("ich habe auf dieser Plattform schon alles gesehen, nichts Neues mehr", "gelangweilt"),
+    ("es regnet seit Tagen und ich kann nicht raus", "gelangweilt"),
+    ("ich warte auf den Zug und habe nichts zu tun", "gelangweilt"),
+    ("diese Arbeit ist immer die gleiche Routine, sie langweilt mich", "gelangweilt"),
+    ("ich bin allein zu Hause ohne etwas zu tun", "gelangweilt"),
+    ("diese Autofahrt nimmt kein Ende, was für eine Last", "gelangweilt"),
+    ("ich habe heute niemanden mit dem ich reden kann", "gelangweilt"),
+    ("dieser Kurs ist endlos und wenig interessant", "gelangweilt"),
+
+    # traurig
+    ("ich kann nicht aufhören an die Person zu denken die ich verloren habe", "traurig"),
+    ("ich fühle mich einsam seit meine Freunde weggezogen sind", "traurig"),
+    ("ich habe mich mit meiner Mutter gestritten und fühle mich schrecklich", "traurig"),
+    ("die Diagnose war nicht die die ich erhofft hatte", "traurig"),
+    ("ich musste mich von einem Freund verabschieden der weit weg zieht", "traurig"),
+    ("ich habe die Prüfung nicht bestanden, ich bin sehr enttäuscht", "traurig"),
+    ("die Beziehung ist vorbei und ich bin am Boden zerstört", "traurig"),
+    ("ich habe die ganze Nacht ohne klaren Grund geweint", "traurig"),
+
+    # wuetend
+    ("sie haben die Pläne in letzter Minute geändert ohne mich zu informieren", "wuetend"),
+    ("man hat mich für eine Beförderung übergangen die ich verdient hätte", "wuetend"),
+    ("man hat mich stundenlang warten lassen ohne jede Entschuldigung", "wuetend"),
+    ("ich bin es leid immer die gleichen Bitten zu wiederholen", "wuetend"),
+    ("man hat mich vor allen lächerlich gemacht, ich bin wütend", "wuetend"),
+    ("sie haben ein wichtiges Versprechen gebrochen ohne sich zu entschuldigen", "wuetend"),
+    ("ich ertrage diesen ständigen Mangel an Respekt nicht mehr", "wuetend"),
+    ("man hat mich für etwas beschuldigt das ich nicht getan habe", "wuetend"),
+    ("sie haben die Veranstaltung ohne Rückerstattung abgesagt", "wuetend"),
+    ("der Kundenservice hat mich eine Stunde warten lassen", "wuetend"),
 ]

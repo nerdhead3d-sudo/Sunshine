@@ -122,4 +122,90 @@ EXAMPLES: list[tuple[str, str]] = [
     ("essa injustiça me deixa extremamente irritado", "irritado"),
     ("cancelaram meu voo sem nem me avisar", "irritado"),
     ("o entregador perdeu meu pacote e ninguém me responde", "irritado"),
+
+    # --- segunda rodada: mais variedade ---
+
+    # feliz
+    ("encontrei um novo emprego, estou muito feliz", "feliz"),
+    ("nosso time ganhou, estou nas nuvens", "feliz"),
+    ("finalmente economizei o suficiente para as férias", "feliz"),
+    ("minha filha deu os primeiros passos hoje, estou emocionado", "feliz"),
+    ("o médico disse que estou bem, que alívio", "feliz"),
+    ("passei uma noite fantástica com meus amigos", "feliz"),
+    ("compramos nossa primeira casa, não poderia estar mais feliz", "feliz"),
+    ("passei na entrevista, estou nas nuvens", "feliz"),
+    ("meu sobrinho nasceu hoje, que alegria enorme", "feliz"),
+    ("terminei de pagar o empréstimo, que alívio", "feliz"),
+    ("fizemos um piquenique perfeito apesar do tempo", "feliz"),
+    ("recebi uma mensagem que iluminou meu dia", "feliz"),
+
+    # carinhoso
+    ("minha mãe me liga todo domingo só para saber como estou", "carinhoso"),
+    ("eu sempre te traria uma flor quando você estivesse triste", "carinhoso"),
+    ("meu melhor amigo sempre lembra das datas importantes para mim", "carinhoso"),
+    ("eu gostaria de ser sempre o seu ombro para se apoiar", "carinhoso"),
+    ("meu gato sempre dorme nos meus pés, eu o adoro", "carinhoso"),
+    ("eu te escreveria toda noite só para dizer boa noite", "carinhoso"),
+    ("minha irmã sempre me protegeu, sou muito apegado a ela", "carinhoso"),
+    ("eu gostaria de estar sempre presente nos momentos importantes da sua vida", "carinhoso"),
+    ("meu avô sempre me conta histórias maravilhosas", "carinhoso"),
+    ("penso em você com ternura cada vez que ouço essa música", "carinhoso"),
+
+    # animado
+    ("amanhã finalmente parto para a viagem que esperava há um ano", "animado"),
+    ("acabei de reservar os ingressos do show, estou muito animado", "animado"),
+    ("amanhã começa meu primeiro dia de trabalho, estou muito nervoso", "animado"),
+    ("nosso time joga a final hoje à noite, estou demais animado", "animado"),
+    ("acabei de saber que vamos ao parque de diversões", "animado"),
+    ("amanhã vejo meu time favorito jogar ao vivo", "animado"),
+    ("finalmente chegou o grande dia, não acredito", "animado"),
+    ("não consigo dormir de tão impaciente que estou", "animado"),
+    ("amanhã é meu aniversário e organizei uma grande festa", "animado"),
+    ("vamos para a montanha neste fim de semana, não vejo a hora", "animado"),
+
+    # neutro
+    ("abasteci o carro esta manhã", "neutro"),
+    ("estou preenchendo um formulário para o seguro", "neutro"),
+    ("tenho uma consulta médica na próxima semana", "neutro"),
+    ("estou olhando preços de voos por curiosidade", "neutro"),
+    ("troquei o óleo do carro neste fim de semana", "neutro"),
+    ("estou vendo um tutorial para arrumar a torneira", "neutro"),
+    ("renovei minha assinatura do celular", "neutro"),
+    ("estou escolhendo o que cozinhar para o jantar", "neutro"),
+    ("retirei um pacote no correio", "neutro"),
+    ("estou fazendo a manutenção do jardim", "neutro"),
+
+    # entediado
+    ("estou esperando na fila há uma hora e nada acontece", "entediado"),
+    ("essa reunião se arrasta sem chegar a uma conclusão", "entediado"),
+    ("já vi tudo nessa plataforma, nada novo", "entediado"),
+    ("está chovendo há dias e não posso sair", "entediado"),
+    ("estou esperando o trem e não tenho nada para fazer", "entediado"),
+    ("esse trabalho é sempre a mesma rotina, me entedia", "entediado"),
+    ("estou sozinho em casa sem nada para fazer", "entediado"),
+    ("essa viagem de carro não acaba nunca, que chatice", "entediado"),
+    ("não tenho com quem falar hoje", "entediado"),
+    ("essa aula é interminável e pouco interessante", "entediado"),
+
+    # triste
+    ("não consigo parar de pensar na pessoa que perdi", "triste"),
+    ("me sinto sozinho desde que meus amigos se mudaram", "triste"),
+    ("discuti com minha mãe e me sinto muito mal", "triste"),
+    ("o diagnóstico não foi o que eu esperava", "triste"),
+    ("tive que me despedir de um amigo que vai morar longe", "triste"),
+    ("não passei na prova, estou muito decepcionado", "triste"),
+    ("o relacionamento terminou e estou arrasado", "triste"),
+    ("chorei a noite toda sem um motivo claro", "triste"),
+
+    # irritado
+    ("mudaram os planos de última hora sem me avisar", "irritado"),
+    ("me passaram por cima para uma promoção que eu merecia", "irritado"),
+    ("me fizeram esperar horas sem nenhuma desculpa", "irritado"),
+    ("estou cansado de repetir sempre os mesmos pedidos", "irritado"),
+    ("me ridicularizaram na frente de todos, estou furioso", "irritado"),
+    ("quebraram uma promessa importante sem nem se desculpar", "irritado"),
+    ("não suporto mais essa falta de respeito constante", "irritado"),
+    ("me acusaram de algo que eu não fiz", "irritado"),
+    ("cancelaram o evento sem nenhum reembolso", "irritado"),
+    ("o atendimento ao cliente me deixou esperando uma hora", "irritado"),
 ]

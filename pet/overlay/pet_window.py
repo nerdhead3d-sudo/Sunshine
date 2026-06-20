@@ -344,7 +344,8 @@ class PetWindow(QWidget):
                 self._fall_target_platform = landing_platform
             self.move(self._x, self._y)
         else:
-            self._set_muted(not self._muted)
+            if not self.voice_chat.interrupt():
+                self._set_muted(not self._muted)
 
         self._drag_started = False
         self._drag_mouse_start = None

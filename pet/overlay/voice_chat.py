@@ -26,7 +26,7 @@ from pet.memory.store import MemoryStore
 from pet.mood.classifier import get_classifier
 from pet.skills import intents, language_commands
 from pet.voice.stt import ContinuousListener
-from pet.voice.tts import SpeakWorker
+from pet.voice.tts import SpeakWorker, stop_playback
 
 if config.USE_LOCAL_LLM:
     from pet.local_llm_client import LocalLLMClient as ChatClient
@@ -142,6 +142,7 @@ class VoiceChatController(QObject):
 
         self._muted = False
         self._busy = False  # anything in flight (thinking/queued/speaking): listener stays paused
+        self._interrupted = False  # set by interrupt(); stale chunks/replies/speech check this to bail out
 
         self.set_identity(DEFAULT_IDENTITY)
 
@@ -158,6 +159,24 @@ class VoiceChatController(QObject):
     def set_paused(self, muted: bool):
         self._muted = muted
         self._refresh_listening()
+
+    def interrupt(self) -> bool:
+        """Stops whatever Sunshine is currently thinking/saying (e.g. on
+        click). Returns False if it wasn't doing anything, so the caller
+        can fall back to its normal click behavior (mute toggle)."""
+        if not self._busy:
+            return False
+        self._interrupted = True
+        self._speak_queue.clear()
+        self._streaming = False
+        stop_playback()
+        if self._speak_worker is not None:
+            self._speak_worker.deleteLater()
+            self._speak_worker = None
+        self._speaking = False
+        self._busy = False
+        self._refresh_listening()
+        return True
 
     def _refresh_listening(self):
         if self._muted or self._busy:
@@ -193,14 +212,20 @@ class VoiceChatController(QObject):
         self._on_named = on_named
         self.announce("Ciao! Non so ancora come ti chiami: come ti chiami?")
 
+    def _is_known_identity(self) -> bool:
+        """True once webcam recognition has actually put a real name to
+        the current speaker — not the unrecognized default profile nor an
+        auto-learned-but-not-yet-named placeholder ("Persona1", "Gatto1")."""
+        name = self._identity_name
+        return bool(name) and name != DEFAULT_IDENTITY and not _PLACEHOLDER_IDENTITY_RE.match(name)
+
     def _who_am_i_reply(self) -> str:
         """Answers "chi sono io?"-style questions directly instead of
         relying on the small local model, which tends to ignore the
         identity fact in context and make up silly guesses ("un gatto?",
         "un computer?") for this kind of self-referential question."""
-        name = self._identity_name
-        if name and name != DEFAULT_IDENTITY and not _PLACEHOLDER_IDENTITY_RE.match(name):
-            return f"Sei {name}!"
+        if self._is_known_identity():
+            return f"Sei {self._identity_name}!"
         return "Non ti ho ancora riconosciuto bene: resta un attimo davanti alla webcam e dovrei capire chi sei."
 
     def announce(self, text: str):
@@ -237,6 +262,8 @@ class VoiceChatController(QObject):
         if not text:
             return
 
+        self._interrupted = False
+
         if self._awaiting_name_for is not None:
             self._handle_name_answer(text)
             return
@@ -253,7 +280,7 @@ class VoiceChatController(QObject):
             self.announce(self._who_am_i_reply())
             return
 
-        skill_reply = intents.try_handle(text, self._schedule_announcement)
+        skill_reply = intents.try_handle(text, self._schedule_announcement, allow_open_apps=self._is_known_identity())
         if skill_reply is not None:
             self.announce(skill_reply)
             return
@@ -312,6 +339,8 @@ class VoiceChatController(QObject):
     # -- streaming reply -> sentence-by-sentence speech ----------------------
 
     def _on_reply_chunk(self, piece: str):
+        if self._interrupted:
+            return
         self._reply_buffer += piece
         while True:
             match = _SENTENCE_END_RE.search(self._reply_buffer)
@@ -328,6 +357,10 @@ class VoiceChatController(QObject):
         if self._reply_worker is not None:
             self._reply_worker.deleteLater()
             self._reply_worker = None
+
+        if self._interrupted:
+            self._reply_buffer = ""
+            return
 
         leftover = self._reply_buffer.strip()
         self._reply_buffer = ""
@@ -371,6 +404,8 @@ class VoiceChatController(QObject):
         self._speak_worker.start()
 
     def _on_sentence_spoken(self):
+        if not self._speaking:
+            return  # stale signal from a worker interrupt() already cleaned up
         if self._speak_worker is not None:
             self._speak_worker.deleteLater()
             self._speak_worker = None

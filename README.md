@@ -19,6 +19,16 @@ leggero (~770MB, `config.LOCAL_LLM_REPO_ID`/`LOCAL_LLM_FILENAME`) e tenuto
 in cache in `pet/local_models/`. Gira bene anche su PC senza GPU dedicata
 con 8GB di RAM (es. Surface Pro 7).
 
+**Consumo di RAM misurato** (macchina di sviluppo, non il PC target):
+con i 6 classificatori di umore + l'LLM locale + Whisper tutti caricati
+insieme (il picco tipico durante una conversazione), il processo usa
+circa **690MB di working set** — meno di quanto ci si aspetterebbe dalla
+sola somma dei file (`gpt4all`/llama.cpp carica il modello via
+memory-mapping, non lo duplica tutto in RAM privata). Su un PC con 8GB
+totali questo lascia margine per il resto, ma se senti il sistema
+appesantito puoi alleggerire scegliendo un modello Whisper più piccolo
+(`config.STT_WHISPER_MODEL = "base"` o `"tiny"` invece di `"small"`).
+
 Se preferisci usare Ollama invece (es. per un modello più grande con GPU
 dedicata), imposta `USE_LOCAL_LLM = False` in `config.py` e assicurati che
 Ollama sia in esecuzione con il modello scaricato:

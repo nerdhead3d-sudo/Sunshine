@@ -42,6 +42,23 @@ _piper_voices: dict[str, object] = {}  # lang -> PiperVoice, or False if it fail
 _piper_lock = threading.Lock()
 
 
+def stop_playback():
+    """Best-effort: stops whatever is currently playing (the edge-tts/MCI
+    path or the Piper/winsound path), so a click can interrupt the pet
+    mid-sentence. pyttsx3 (the last-resort fallback) isn't interruptible
+    this way — acceptable since it's rarely reached."""
+    try:
+        ctypes.windll.winmm.mciSendStringW("stop pet_tts_clip", None, 0, None)
+    except Exception:
+        pass
+    try:
+        import winsound
+
+        winsound.PlaySound(None, winsound.SND_PURGE)
+    except Exception:
+        pass
+
+
 def clean_for_speech(text: str) -> str:
     """Strips markdown formatting and emoji so the TTS engine doesn't read
     out symbols like '*' or '#' as words."""
