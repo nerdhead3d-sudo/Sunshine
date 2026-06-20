@@ -132,6 +132,38 @@ sue idee sono state portate in Sunshine:
   default (compatibile comunque con i vecchi campioni in scala di grigi).
   I gatti restano sul vecchio percorso Haar+LBPH, senza pose guidate.
 
+Altre quattro, aggiunte in una sessione successiva:
+
+- **Sveglia** ("svegliami alle 7:30", "metti la sveglia tutti i giorni
+  alle 7"): nuova tabella `alarms` in `pet_memory.db` (ora, minuto,
+  ricorrente, `last_fired_date` per non doppio-suonare dopo un riavvio lo
+  stesso giorno). Riprogrammata a ogni avvio (`_reschedule_active_alarms`
+  in `pet/overlay/voice_chat.py`); al suono, 3 beep (`winsound.Beep` su
+  thread separato per non bloccare la UI Qt) + frase parlata; se
+  ricorrente si riprogramma da sola per il giorno dopo, altrimenti si
+  disabilita.
+- **YouTube embedded**: `pet/overlay/youtube_player.py`,
+  `QWebEngineView` (già incluso in PySide6, nessuna dipendenza nuova —
+  verificato). Finestra normale (non trasparente, ha barra del titolo:
+  mostra contenuto video reale, deve essere chiudibile). "Cerca su
+  youtube X" apre i risultati di ricerca; play/pausa video iniettano un
+  piccolo snippet JS (`document.querySelector('video').play()/pause()`)
+  invece di integrare la IFrame API completa — sufficiente per comandi
+  vocali semplici, molto meno codice. La ricerca (apre contenuto nuovo)
+  è soggetta allo stesso gate `allow_open_apps` di "apri X"; play/pausa/
+  chiudi su un video già aperto no.
+- **Routine mattina/sera**: `VoiceChatController.greet()` (chiamato da
+  `_on_identity_recognized` in `pet/overlay/pet_window.py` invece del
+  vecchio `announce(f"Ciao {name}!")` diretto) capisce se è la prima
+  volta che riconosce quella persona in quel periodo del giorno (mattina
+  5-12, sera 18-24; il resto della giornata resta un saluto semplice) via
+  nuova colonna `identities.last_routine` (marker `"YYYY-MM-DD:periodo"`)
+  e in tal caso dice ora/data/promemoria in sospeso invece del semplice
+  saluto.
+- Meteo e radio internet **non implementati** (proposti ma non scelti
+  dall'utente in questa sessione — entrambi richiederebbero servizi
+  online, in tensione con l'offline-first del progetto).
+
 Nota terminologica (chiarita durante la sessione): "Lumo" di Proton è un
 chatbot **cloud**, non gira offline nonostante il marketing suggerisca il
 contrario ("niente ricerca web" ≠ "gira senza internet") — non è la fonte

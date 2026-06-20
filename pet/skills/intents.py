@@ -9,6 +9,21 @@ from collections.abc import Callable
 from . import commands
 
 ScheduleFn = Callable[[float, str], None]
+AlarmFn = Callable[[int, int, bool], None]  # (hour, minute, recurring)
+YoutubeFn = Callable[[str, str], None]  # (action: "search"|"play"|"pause"|"close", query)
+
+_ALARM_TRIGGER_RE = re.compile(r"\bsvegli|\bsveglia\b")
+_ALARM_TIME_RE = re.compile(r"\balle (\d{1,2})(?:[:.](\d{2}))?\b")
+_ALARM_RECURRING_RE = re.compile(r"\btutti i giorni\b|\bogni giorno\b")
+
+_YT_SEARCH_PATTERNS = [
+    re.compile(r"\bcerca(?:mi)?\s+(?:su\s+)?youtube\s+(.+)"),
+    re.compile(r"\b(?:guarda|fammi vedere|fai vedere)\s+(.+?)\s+su youtube\b"),
+    re.compile(r"\bsu youtube\s+(?:cerca\s+)?(.+)"),
+]
+_YT_PLAY_RE = re.compile(r"\b(?:riprendi|play|fai partire)\b.*\bvideo\b")
+_YT_PAUSE_RE = re.compile(r"\b(?:pausa|metti in pausa|ferma|stoppa)\b.*\bvideo\b")
+_YT_CLOSE_RE = re.compile(r"\bchiudi\b.*\b(?:youtube|video)\b")
 
 _POLITE_PREFIX_RE = re.compile(
     r"^(puoi|potresti|riesci a|mi sai|sai)\s+|\bper favore\b|\bper piacere\b"
@@ -24,14 +39,56 @@ def _normalize(text: str) -> str:
     return t
 
 
-def try_handle(text: str, schedule_announcement: ScheduleFn, allow_open_apps: bool = True) -> str | None:
+def try_handle(
+    text: str,
+    schedule_announcement: ScheduleFn,
+    allow_open_apps: bool = True,
+    schedule_alarm: AlarmFn | None = None,
+    youtube_action: YoutubeFn | None = None,
+) -> str | None:
     """Returns a spoken reply if `text` matched a known command, else None.
     `schedule_announcement(seconds, text)` is used for delayed replies
-    (timers/reminders). `allow_open_apps=False` disables the "apri X"
-    command (the one with real-world side effects — launching programs or
-    websites) so it doesn't fire for an unrecognized speaker; everything
-    else (info, volume, reminders) stays available regardless."""
+    (timers/reminders); `schedule_alarm(hour, minute, recurring)` for
+    "svegliami alle X" commands; `youtube_action(action, query)` for the
+    embedded YouTube player. `allow_open_apps=False` disables the "apri X"
+    command and YouTube searches (real-world side effects — launching
+    programs, websites, or video content) so they don't fire for an
+    unrecognized speaker; everything else (info, volume, reminders,
+    alarms, play/pause/close on an already-open video) stays available
+    regardless."""
     t = _normalize(text)
+
+    if youtube_action is not None:
+        if _YT_PLAY_RE.search(t):
+            youtube_action("play", "")
+            return "Riprendo il video."
+        if _YT_PAUSE_RE.search(t):
+            youtube_action("pause", "")
+            return "Video in pausa."
+        if _YT_CLOSE_RE.search(t):
+            youtube_action("close", "")
+            return "Chiudo il video."
+        if allow_open_apps:
+            for pattern in _YT_SEARCH_PATTERNS:
+                match = pattern.search(t)
+                if match:
+                    query = match.group(1).strip()
+                    if query:
+                        youtube_action("search", query)
+                        return f"Cerco {query} su YouTube."
+
+    if schedule_alarm is not None and _ALARM_TRIGGER_RE.search(t):
+        time_match = _ALARM_TIME_RE.search(t)
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2) or 0)
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                recurring = bool(_ALARM_RECURRING_RE.search(t))
+                schedule_alarm(hour, minute, recurring)
+                time_str = f"{hour:02d}:{minute:02d}"
+                if recurring:
+                    return f"Sveglia impostata tutti i giorni alle {time_str}."
+                return f"Sveglia impostata per le {time_str}."
 
     if re.search(r"\bche ore (sono|è)\b|\bche ora è\b|\bdimmi l'ora\b", t):
         return f"Sono le {commands.current_time()}."

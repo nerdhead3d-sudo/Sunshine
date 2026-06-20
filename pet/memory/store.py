@@ -17,13 +17,17 @@ class MemoryStore:
         self._migrate()
 
     def _migrate(self):
-        # Databases created before the multi-language feature don't have
-        # this column yet; CREATE TABLE IF NOT EXISTS won't add it.
-        try:
-            self._conn.execute("ALTER TABLE identities ADD COLUMN language TEXT")
-            self._conn.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists
+        # Databases created before these features don't have these columns
+        # yet; CREATE TABLE IF NOT EXISTS won't add them.
+        for ddl in (
+            "ALTER TABLE identities ADD COLUMN language TEXT",
+            "ALTER TABLE identities ADD COLUMN last_routine TEXT",
+        ):
+            try:
+                self._conn.execute(ddl)
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     def close(self):
         self._conn.close()
@@ -78,6 +82,14 @@ class MemoryStore:
         self._conn.execute("UPDATE identities SET language = ? WHERE id = ?", (lang, identity_id))
         self._conn.commit()
 
+    def get_last_routine(self, identity_id: int) -> str | None:
+        row = self._conn.execute("SELECT last_routine FROM identities WHERE id = ?", (identity_id,)).fetchone()
+        return row["last_routine"] if row else None
+
+    def set_last_routine(self, identity_id: int, marker: str):
+        self._conn.execute("UPDATE identities SET last_routine = ? WHERE id = ?", (marker, identity_id))
+        self._conn.commit()
+
     # -- messages -------------------------------------------------------
 
     def add_message(self, identity_id: int, role: str, content: str):
@@ -126,4 +138,36 @@ class MemoryStore:
 
     def mark_reminder_fired(self, reminder_id: int):
         self._conn.execute("UPDATE reminders SET fired = 1 WHERE id = ?", (reminder_id,))
+        self._conn.commit()
+
+    # -- alarms ---------------------------------------------------------
+
+    def add_alarm(self, hour: int, minute: int, recurring: bool, message: str) -> int:
+        cur = self._conn.execute(
+            "INSERT INTO alarms (hour, minute, recurring, message) VALUES (?, ?, ?, ?)",
+            (hour, minute, int(recurring), message),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def get_active_alarms(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT id, hour, minute, recurring, message, last_fired_date "
+            "FROM alarms WHERE enabled = 1"
+        ).fetchall()
+        return [
+            {
+                "id": row["id"], "hour": row["hour"], "minute": row["minute"],
+                "recurring": bool(row["recurring"]), "message": row["message"],
+                "last_fired_date": row["last_fired_date"],
+            }
+            for row in rows
+        ]
+
+    def mark_alarm_fired(self, alarm_id: int, fired_date: str):
+        self._conn.execute("UPDATE alarms SET last_fired_date = ? WHERE id = ?", (fired_date, alarm_id))
+        self._conn.commit()
+
+    def disable_alarm(self, alarm_id: int):
+        self._conn.execute("UPDATE alarms SET enabled = 0 WHERE id = ?", (alarm_id,))
         self._conn.commit()

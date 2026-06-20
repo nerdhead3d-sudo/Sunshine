@@ -17,6 +17,7 @@ name) are Italian-only for now — unmatched phrases just fall through to
 the chat model, which does reply in the active language."""
 
 import re
+import threading
 from datetime import datetime, timedelta, timezone
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
@@ -24,7 +25,7 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal
 import config
 from pet.memory.store import MemoryStore
 from pet.mood.classifier import get_classifier
-from pet.skills import intents, language_commands
+from pet.skills import commands, intents, language_commands
 from pet.voice.stt import ContinuousListener
 from pet.voice.tts import SpeakWorker, stop_playback
 
@@ -112,6 +113,7 @@ class VoiceChatController(QObject):
 
     action_ready = Signal(str)  # narrated action text (e.g. "*ti tocca la fronte*"), for the UI to show
     mood_changed = Signal(str, float)  # (label, running valence score) from our own mood classifier
+    youtube_requested = Signal(str, str)  # (action: "search"|"play"|"pause"|"close", query) for the UI to handle
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -156,6 +158,7 @@ class VoiceChatController(QObject):
         self._listener.start()
         self._refresh_listening()
         self._reschedule_pending_reminders()
+        self._reschedule_active_alarms()
 
     def stop(self):
         self._listener.stop()
@@ -241,6 +244,44 @@ class VoiceChatController(QObject):
         new_mood = self._store.update_mood(self._identity_id, config.PET_STROKE_MOOD_VALENCE, config.MOOD_EMA_ALPHA)
         self.mood_changed.emit("carezza", new_mood)
 
+    def greet(self, name: str):
+        """Speaks a greeting for `name`, upgraded to a short morning/evening
+        routine (Lumo-style) the first time they're recognized in that
+        period of the day: time, date, and a nudge about any pending
+        reminders. Falls back to a plain "Ciao!" the rest of the time."""
+        period = self._current_routine_period()
+        if period is None or self._identity_id is None:
+            self.announce(f"Ciao {name}!")
+            return
+
+        marker = f"{datetime.now().date().isoformat()}:{period}"
+        if self._store.get_last_routine(self._identity_id) == marker:
+            self.announce(f"Ciao {name}!")
+            return
+
+        self._store.set_last_routine(self._identity_id, marker)
+        self.announce(self._routine_phrase(name, period))
+
+    @staticmethod
+    def _current_routine_period() -> str | None:
+        hour = datetime.now().hour
+        if 5 <= hour < 12:
+            return "mattina"
+        if 18 <= hour < 24:
+            return "sera"
+        return None
+
+    def _routine_phrase(self, name: str, period: str) -> str:
+        time_str = commands.current_time()
+        pending = len(self._store.get_pending_reminders())
+        if period == "mattina":
+            phrase = f"Buongiorno {name}! Sono le {time_str}, oggi è {commands.current_date()}."
+        else:
+            phrase = f"Buonasera {name}! Sono le {time_str}."
+        if pending:
+            phrase += f" Hai ancora {pending} promemoria in sospeso."
+        return phrase
+
     def announce(self, text: str):
         """Speaks `text` outside of the normal chat flow (greetings, etc.),
         in the currently active language."""
@@ -253,6 +294,58 @@ class VoiceChatController(QObject):
         due_at = (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
         reminder_id = self._store.add_reminder(text, due_at)
         QTimer.singleShot(int(seconds * 1000), lambda: self._fire_reminder(reminder_id, text))
+
+    def _schedule_alarm(self, hour: int, minute: int, recurring: bool):
+        """Called from intents.try_handle on "svegliami alle X" /
+        "tutti i giorni alle X". Persisted to SQLite (alarms table) so
+        recurring alarms keep firing across restarts."""
+        message = "Sveglia!"
+        alarm_id = self._store.add_alarm(hour, minute, recurring, message)
+        self._schedule_next_alarm_fire(alarm_id, hour, minute, recurring, message)
+
+    def _schedule_next_alarm_fire(self, alarm_id: int, hour: int, minute: int, recurring: bool, message: str):
+        now = datetime.now()
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        delay_seconds = (target - now).total_seconds()
+        QTimer.singleShot(
+            int(delay_seconds * 1000),
+            lambda: self._fire_alarm(alarm_id, hour, minute, recurring, message),
+        )
+
+    def _fire_alarm(self, alarm_id: int, hour: int, minute: int, recurring: bool, message: str):
+        self._store.mark_alarm_fired(alarm_id, datetime.now().date().isoformat())
+        self._play_alarm_sound()
+        self.announce(message)
+        if recurring:
+            self._schedule_next_alarm_fire(alarm_id, hour, minute, recurring, message)
+        else:
+            self._store.disable_alarm(alarm_id)
+
+    @staticmethod
+    def _play_alarm_sound():
+        def _beep():
+            try:
+                import winsound
+                for _ in range(3):
+                    winsound.Beep(880, 200)
+            except Exception:
+                pass
+        threading.Thread(target=_beep, daemon=True).start()
+
+    def _reschedule_active_alarms(self):
+        """Re-arms every still-enabled alarm on startup: recurring ones
+        always, one-shot ones too (in case the app was closed before they
+        fired) — unless one already fired today (e.g. the app restarted a
+        few seconds after a recurring alarm went off)."""
+        today_str = datetime.now().date().isoformat()
+        for alarm in self._store.get_active_alarms():
+            if alarm["last_fired_date"] == today_str:
+                continue
+            self._schedule_next_alarm_fire(
+                alarm["id"], alarm["hour"], alarm["minute"], alarm["recurring"], alarm["message"],
+            )
 
     def _reschedule_pending_reminders(self):
         now = datetime.now(timezone.utc)
@@ -302,7 +395,12 @@ class VoiceChatController(QObject):
             self.announce(self._who_am_i_reply())
             return
 
-        skill_reply = intents.try_handle(text, self._schedule_announcement, allow_open_apps=self._is_known_identity())
+        skill_reply = intents.try_handle(
+            text, self._schedule_announcement,
+            allow_open_apps=self._is_known_identity(),
+            schedule_alarm=self._schedule_alarm,
+            youtube_action=lambda action, query: self.youtube_requested.emit(action, query),
+        )
         if skill_reply is not None:
             self.announce(skill_reply)
             return

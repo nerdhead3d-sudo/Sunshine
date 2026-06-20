@@ -11,6 +11,7 @@ from pet.overlay.action_bubble import ActionBubble
 from pet.overlay.sprite_animator import SpriteAnimator
 from pet.overlay.voice_chat import VoiceChatController
 from pet.overlay.window_tracker import top_edge_platforms
+from pet.overlay.youtube_player import YouTubePlayerWindow
 from pet.recognition.recognizer import RecognitionService
 
 _PLACEHOLDER_NAME_RE = re.compile(r"^Persona\d+$")
@@ -80,9 +81,12 @@ class PetWindow(QWidget):
 
         self.action_bubble = ActionBubble()
 
+        self._youtube_player: YouTubePlayerWindow | None = None
+
         self.voice_chat = VoiceChatController(self)
         self.voice_chat.action_ready.connect(self._on_action_text)
         self.voice_chat.mood_changed.connect(self._on_mood_changed)
+        self.voice_chat.youtube_requested.connect(self._on_youtube_requested)
         self.voice_chat.start()
 
         self.recognition = RecognitionService(self)
@@ -265,7 +269,7 @@ class PetWindow(QWidget):
             self.voice_chat.request_name_for(name, on_named=self._on_person_renamed)
         else:
             self.voice_chat.set_identity(name, seen_via_camera=True)
-            self.voice_chat.announce(f"Ciao {name}!")
+            self.voice_chat.greet(name)
 
     def _on_identity_learned(self, name: str, kind: str):
         self.state_machine.trigger_react()
@@ -279,6 +283,20 @@ class PetWindow(QWidget):
 
     def _on_action_text(self, text: str):
         self.action_bubble.show_action(text, self._x, self._y, self._screen_rect)
+        self.state_machine.trigger_react(10)
+
+    def _on_youtube_requested(self, action: str, query: str):
+        if self._youtube_player is None:
+            self._youtube_player = YouTubePlayerWindow()
+
+        if action == "search":
+            self._youtube_player.search(query)
+        elif action == "play":
+            self._youtube_player.play()
+        elif action == "pause":
+            self._youtube_player.pause()
+        elif action == "close":
+            self._youtube_player.close_player()
         self.state_machine.trigger_react(10)
 
     def _on_mood_changed(self, label: str, value: float):
