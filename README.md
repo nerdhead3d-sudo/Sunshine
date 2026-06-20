@@ -181,12 +181,20 @@ conversazione e i propri "fatti" salvati in `pet/data/pet_memory.db`
 
 ## Riconoscimento via webcam (ad apprendimento automatico)
 
-Sunshine riconosce le persone (volto) e i gatti (muso) inquadrati dalla
-webcam con Haar cascade + LBPH (OpenCV) — **non serve nessun enrollment
-manuale**: quando vede una faccia/muso che non riconosce per qualche
-secondo di seguito, la impara da sola, le assegna un nome temporaneo
-(`Persona1`, `Gatto1`, ...) e addestra il modello al volo
-(`pet/recognition/models/`).
+Sunshine riconosce le **persone** con un modello di deep learning
+([InsightFace](https://github.com/deepinsight/insightface), ONNX Runtime,
+solo CPU — modello "buffalo_sc", ~15MB, scaricato una volta da GitHub):
+ogni volto diventa un vettore numerico (embedding) che resta vicino a
+quello della stessa persona indipendentemente da luce/angolo/espressione,
+molto più robusto del semplice confronto di texture dei pixel. I **gatti**
+restano su Haar cascade + LBPH (OpenCV) — InsightFace è addestrato sulla
+geometria del volto umano e non si applica ai musi felini.
+
+**Non serve nessun enrollment manuale**: quando vede una faccia/muso che
+non riconosce per qualche secondo di seguito, la impara da sola, le
+assegna un nome temporaneo (`Persona1`, `Gatto1`, ...) e salva il modello
+al volo (embedding in `pet/recognition/models/person/*.npy` per le
+persone, LBPH in `pet/recognition/models/cats.yml` per i gatti).
 
 - Per una **persona** appena imparata, Sunshine chiede a voce "come ti
   chiami?" e rinomina l'identità (sia nel riconoscimento webcam che nella

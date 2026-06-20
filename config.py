@@ -136,22 +136,36 @@ CLIMB_CHANCE = 0.4               # probability of climbing at each check
 CLIMB_DURATION_MS = 15000        # how long to stay on a window before descending
 MIN_PLATFORM_WIDTH = DISPLAY_SIZE * 1.2
 
-# Recognition (Fase 4): webcam-based identification of people and cats via
-# Haar cascades + LBPH. No manual enrollment needed: unknown faces/cat-faces
-# are learned automatically (see AUTO_LEARN_*) once seen consistently.
+# Recognition (Fase 4): webcam-based identification of people (deep-
+# learning face embeddings, see face_embeddings.py) and cats (Haar
+# cascades + LBPH — InsightFace's detector/aligner only handles human
+# face geometry, cats stay on the classical approach). No manual
+# enrollment needed: unknown faces/cat-faces are learned automatically
+# (see AUTO_LEARN_*) once seen consistently.
 WEBCAM_INDEX = 0
 RECOGNITION_INTERVAL_MS = 400
-RECOGNITION_CONFIDENCE_THRESHOLD = 65.0  # LBPH distance: lower = more confident (stricter)
+RECOGNITION_CONFIDENCE_THRESHOLD = 65.0  # cat LBPH distance: lower = more confident (stricter)
 RECOGNITION_CONSECUTIVE_FRAMES = 6       # frames needed in a row before confirming (~2.4s)
 RECOGNITION_DIR = BASE_DIR / "pet" / "recognition"
 RECOGNITION_SAMPLES_DIR = RECOGNITION_DIR / "samples"
 RECOGNITION_MODELS_DIR = RECOGNITION_DIR / "models"
 
+# Face embedding model for people (InsightFace, ONNX Runtime, CPU). "_sc"
+# is the small/compact variant (~15MB) chosen for compatibility with
+# modest hardware over the larger, slightly more accurate "_l" variant.
+FACE_EMBEDDING_MODEL = "buffalo_sc"
+FACE_EMBEDDING_MODEL_DIR = RECOGNITION_DIR / "face_models"
+FACE_EMBEDDING_DET_SIZE = (320, 320)
+FACE_EMBEDDING_SIMILARITY_THRESHOLD = 0.40  # cosine similarity above which two faces count as the same person
+
 AUTO_LEARN_ENABLED = True
 AUTO_LEARN_SAMPLE_COUNT = 40       # consecutive unknown-face frames before auto-training (~16s)
-AUTO_LEARN_MAX_FRAME_DIFF = 40.0   # mean abs pixel diff vs. last buffered crop; above this, treat
-                                    # it as a different face and restart the buffer (avoids merging
-                                    # two different people who alternate in front of the webcam)
+AUTO_LEARN_MAX_FRAME_DIFF = 40.0   # cats: mean abs pixel diff vs. last buffered crop. People: cosine
+                                    # similarity vs. last buffered embedding, see AUTO_LEARN_MIN_FACE_SIMILARITY.
+                                    # Above/below this, treat it as a different face and restart the
+                                    # buffer (avoids merging two different individuals who alternate
+                                    # in front of the webcam)
+AUTO_LEARN_MIN_FACE_SIMILARITY = 0.35  # people: cosine similarity below this resets the learning buffer
 
 # Appearance-change detection: heuristic pixel-diff comparison between the
 # current face crop and the first sample ever saved for that identity (no

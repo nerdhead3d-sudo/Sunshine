@@ -106,6 +106,39 @@ placeholder "Persona1"/"Gatto1" non ancora nominato) — vedi
 batteria, volume, promemoria) restano disponibili per chiunque, sono a
 basso rischio.
 
+## Riconoscimento volti: deep learning per le persone, LBPH per i gatti
+
+Sostituito LBPH per le persone con embedding facciali deep-learning
+(`pet/recognition/face_embeddings.py`, InsightFace "buffalo_sc" via
+ONNX Runtime, CPU-only, ~15MB scaricato una volta da GitHub releases).
+Motivo: LBPH confronta texture di pixel locali, fragile a luce/posa;
+gli embedding restano vicini per la stessa persona indipendentemente da
+questi fattori. **I gatti restano su Haar cascade + LBPH** — il
+rilevatore/allineatore di InsightFace capisce solo geometria di volti
+umani, non musi felini.
+
+Dettagli di installazione: `insightface` dichiara una dipendenza da
+`opencv-python`, che è in conflitto con `opencv-contrib-python` già
+installato (stesso modulo `cv2`, nome di pacchetto diverso — installarli
+insieme rischia di mischiare i file dei due pacchetti). Si installa con
+`--no-deps` e si aggiungono a mano le altre dipendenze (vedi
+`requirements.txt`).
+
+Storage: un embedding centroide (512 numeri) per persona in
+`pet/recognition/models/person/<nome>.npy`, calcolato dalla media degli
+embedding accumulati durante l'apprendimento automatico (o dal CLI
+manuale `enroll.py`, che però lavora su ritagli grayscale salvati su
+disco — qualità inferiore a quella dal vivo). Soglia di corrispondenza:
+similarità coseno, `config.FACE_EMBEDDING_SIMILARITY_THRESHOLD`.
+
+Migrazione: le identità "Daniele"/"Persona1-3" già imparate col vecchio
+LBPH sono state convertite al nuovo formato rilanciando `train_person()`
+sui campioni grayscale già salvati su disco (qualità un po' inferiore
+rispetto a embedding calcolati da frame a colori dal vivo, ma
+funzionante — verificato che si distinguono correttamente tra loro). Il
+vecchio `pet/recognition/models/humans.yml`/`humans_labels.json` è stato
+rimosso, non più usato.
+
 ## Rilevamento cambiamenti d'aspetto (sperimentale)
 
 Confronta il volto attuale con la prima foto salvata per quell'identità,

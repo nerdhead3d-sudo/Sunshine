@@ -8,6 +8,7 @@ __pycache__/
 
 # Downloaded models (large binaries, re-downloaded automatically on first run)
 pet/local_models/
+pet/recognition/face_models/
 
 # Personal/sensitive data: face photos, trained face-recognition models,
 # conversation history and identity database — never published.

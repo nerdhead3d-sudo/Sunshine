@@ -1,5 +1,6 @@
 """Optional manual enrollment CLI: captures webcam samples for a person or
-cat under a chosen name and (re)trains the matching LBPH model right away.
+cat under a chosen name and (re)trains the matching model right away
+(face-embedding centroid for people, LBPH for cats — see train.py).
 
 Usage:
     python -m pet.recognition.enroll --identity Marco --kind person
@@ -9,7 +10,10 @@ This is no longer required for the pet to recognize you: RecognitionService
 now learns unknown faces/cat-faces on its own as it sees them repeatedly,
 under a placeholder name that gets renamed to the real one once you say it.
 Use this CLI only if you want to pre-seed a name instead of waiting for
-auto-learning, or to add more samples to an existing identity.
+auto-learning, or to add more samples to an existing identity. Note: since
+samples are saved as grayscale crops, the embeddings trained here are
+lower quality than the ones learned live from full color frames — fine for
+a quick manual seed, not as good as letting auto-learning do its thing.
 """
 
 import argparse
@@ -17,7 +21,7 @@ import argparse
 import cv2
 
 import config
-from pet.recognition.train import train
+from pet.recognition.train import train, train_person
 
 SAMPLES_PER_RUN = 30
 FACE_SIZE = (200, 200)
@@ -86,7 +90,8 @@ def main():
     args = parser.parse_args()
 
     capture_samples(args.identity, args.kind)
-    if not train(args.kind):
+    trained = train_person(args.identity) if args.kind == "person" else train(args.kind)
+    if not trained:
         print(f"Nessun campione valido per '{args.kind}', training saltato.")
 
 

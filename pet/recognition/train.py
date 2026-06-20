@@ -1,5 +1,11 @@
-"""Shared LBPH training routine for the person/cat models, used both by the
-manual enrollment CLI and by the recognizer's automatic learning."""
+"""Training routines used by the manual enrollment CLI (pet/recognition/
+enroll.py) — RecognitionService trains automatically as it learns, this
+is only for pre-seeding a name or adding samples to an existing identity.
+
+Cats: classical LBPH, retrained from every sample on disk.
+People: deep-learning face embeddings (face_embeddings.py) — recomputes
+the centroid embedding from every saved sample image for that identity.
+"""
 
 import json
 
@@ -7,14 +13,15 @@ import cv2
 import numpy as np
 
 import config
+from pet.recognition import face_embeddings
 
-MODEL_NAMES = {"person": "humans", "cat": "cats"}
+MODEL_NAMES = {"cat": "cats"}
 
 
 def train(kind: str) -> bool:
-    """(Re)trains the LBPH model for `kind` from every sample currently on
-    disk under RECOGNITION_SAMPLES_DIR/<kind>/<identity>/*.png. Returns False
-    if there is nothing to train on."""
+    """(Re)trains the cat LBPH model from every sample currently on disk
+    under RECOGNITION_SAMPLES_DIR/cat/<identity>/*.png. Returns False if
+    there is nothing to train on."""
     model_name = MODEL_NAMES[kind]
     kind_dir = config.RECOGNITION_SAMPLES_DIR / kind
     identities = sorted(d.name for d in kind_dir.iterdir() if d.is_dir()) if kind_dir.exists() else []
@@ -43,4 +50,35 @@ def train(kind: str) -> bool:
     (config.RECOGNITION_MODELS_DIR / f"{model_name}_labels.json").write_text(
         json.dumps(label_map, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    return True
+
+
+def train_person(identity: str) -> bool:
+    """Recomputes `identity`'s face-embedding centroid from every sample
+    image saved under RECOGNITION_SAMPLES_DIR/person/<identity>/*.png.
+    Returns False if no face could be extracted from any sample (e.g. no
+    samples yet, or the embedding model failed to load)."""
+    samples_dir = config.RECOGNITION_SAMPLES_DIR / "person" / identity
+    if not samples_dir.exists():
+        return False
+
+    embeddings = []
+    for img_path in samples_dir.glob("*.png"):
+        gray = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+        if gray is None:
+            continue
+        bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        face = face_embeddings.detect_largest_face(bgr)
+        if face is not None:
+            embeddings.append(face.normed_embedding)
+
+    if not embeddings:
+        return False
+
+    centroid = np.stack(embeddings).mean(axis=0)
+    centroid = centroid / np.linalg.norm(centroid)
+
+    model_dir = config.RECOGNITION_MODELS_DIR / "person"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    np.save(model_dir / f"{identity}.npy", centroid)
     return True

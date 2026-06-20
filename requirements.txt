@@ -14,3 +14,21 @@ piper-tts>=1.4
 pyttsx3>=2.99
 faster-whisper>=1.2
 sounddevice>=0.5
+
+# Deep-learning face recognition (people only — cats stay on LBPH/OpenCV
+# above). These three are safe as plain requirements:
+onnx>=1.16
+scipy>=1.13
+scikit-image>=0.24
+#
+# insightface itself is NOT listed above on purpose: it declares a
+# dependency on "opencv-python", which conflicts with
+# "opencv-contrib-python" already in this file (same cv2 module, different
+# package name — installing both risks one overwriting the other's files,
+# silently breaking the cv2.face/cascade APIs the cat recognizer needs).
+# Install it separately with --no-deps once the rest is installed:
+#   pip install insightface --no-deps
+#
+# Without insightface installed, face recognition for people degrades
+# gracefully (logs a warning, never matches anyone) rather than crashing;
+# cats are unaffected either way.
