@@ -60,6 +60,9 @@ class PetWindow(QWidget):
         self._drag_started = False
         self._drag_mouse_start = None
         self._drag_window_start = None
+        self._stroke_path_px = 0.0
+        self._stroke_last_pos = None
+        self._stroke_triggered = False
         self._falling = False
         self._fall_velocity = 0.0
         self._fall_target_y = 0.0
@@ -303,6 +306,9 @@ class PetWindow(QWidget):
             self._drag_started = False
             self._drag_mouse_start = event.globalPosition().toPoint()
             self._drag_window_start = (self._x, self._y)
+            self._stroke_path_px = 0.0
+            self._stroke_last_pos = self._drag_mouse_start
+            self._stroke_triggered = False
 
     def mouseMoveEvent(self, event):
         if self._drag_mouse_start is None:
@@ -310,7 +316,17 @@ class PetWindow(QWidget):
 
         delta = event.globalPosition().toPoint() - self._drag_mouse_start
         if not self._drag_started:
+            pos = event.globalPosition().toPoint()
+            if self._stroke_last_pos is not None:
+                step = pos - self._stroke_last_pos
+                self._stroke_path_px += abs(step.x()) + abs(step.y())
+            self._stroke_last_pos = pos
+
             if abs(delta.x()) < config.DRAG_MOVE_THRESHOLD_PX and abs(delta.y()) < config.DRAG_MOVE_THRESHOLD_PX:
+                if not self._stroke_triggered and self._stroke_path_px >= config.PET_STROKE_MIN_PATH_PX:
+                    self._stroke_triggered = True
+                    self.voice_chat.register_pat()
+                    self.state_machine.trigger_react(10)
                 return
             self._drag_started = True
             self._dragging = True
@@ -343,13 +359,14 @@ class PetWindow(QWidget):
                 self._fall_target_y = landing_y
                 self._fall_target_platform = landing_platform
             self.move(self._x, self._y)
-        else:
+        elif not self._stroke_triggered:
             if not self.voice_chat.interrupt():
                 self._set_muted(not self._muted)
 
         self._drag_started = False
         self._drag_mouse_start = None
         self._drag_window_start = None
+        self._stroke_last_pos = None
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:

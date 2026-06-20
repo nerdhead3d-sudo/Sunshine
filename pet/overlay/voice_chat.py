@@ -130,6 +130,10 @@ class VoiceChatController(QObject):
         self._awaiting_name_for: str | None = None
         self._on_named = None
 
+        self._wake_word_re = re.compile(
+            rf"\b{re.escape(config.WAKE_WORD)}\b[,:]?\s*", re.IGNORECASE
+        ) if config.WAKE_WORD_ENABLED else None
+
         self._listener = ContinuousListener(self)
         self._listener.utterance_recognized.connect(self._on_utterance)
         self._reply_worker: _ReplyWorker | None = None
@@ -228,6 +232,15 @@ class VoiceChatController(QObject):
             return f"Sei {self._identity_name}!"
         return "Non ti ho ancora riconosciuto bene: resta un attimo davanti alla webcam e dovrei capire chi sei."
 
+    def register_pat(self):
+        """Nudges the current identity's mood positively — petting the pet
+        (Lumo-style "carezza") is a small affectionate interaction, separate
+        from anything said in chat."""
+        if self._identity_id is None:
+            return
+        new_mood = self._store.update_mood(self._identity_id, config.PET_STROKE_MOOD_VALENCE, config.MOOD_EMA_ALPHA)
+        self.mood_changed.emit("carezza", new_mood)
+
     def announce(self, text: str):
         """Speaks `text` outside of the normal chat flow (greetings, etc.),
         in the currently active language."""
@@ -267,6 +280,15 @@ class VoiceChatController(QObject):
         if self._awaiting_name_for is not None:
             self._handle_name_answer(text)
             return
+
+        if self._wake_word_re is not None:
+            match = self._wake_word_re.search(text)
+            if match is None:
+                return  # wake word not heard: ignore, stay silently listening
+            text = (text[: match.start()] + text[match.end() :]).strip()
+            if not text:
+                self.announce("Sì?")
+                return
 
         is_lang_command, target_lang = language_commands.detect(text)
         if is_lang_command:

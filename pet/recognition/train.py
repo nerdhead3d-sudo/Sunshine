@@ -57,17 +57,18 @@ def train_person(identity: str) -> bool:
     """Recomputes `identity`'s face-embedding centroid from every sample
     image saved under RECOGNITION_SAMPLES_DIR/person/<identity>/*.png.
     Returns False if no face could be extracted from any sample (e.g. no
-    samples yet, or the embedding model failed to load)."""
+    samples yet, or the embedding model failed to load). Samples may be
+    color (auto-learning, guided enrollment) or grayscale-replicated
+    (older samples) — cv2.imread's default color mode handles both."""
     samples_dir = config.RECOGNITION_SAMPLES_DIR / "person" / identity
     if not samples_dir.exists():
         return False
 
     embeddings = []
     for img_path in samples_dir.glob("*.png"):
-        gray = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
-        if gray is None:
+        bgr = cv2.imread(str(img_path))
+        if bgr is None:
             continue
-        bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
         face = face_embeddings.detect_largest_face(bgr)
         if face is not None:
             embeddings.append(face.normed_embedding)

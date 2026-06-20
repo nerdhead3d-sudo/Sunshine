@@ -51,6 +51,9 @@ class RecognitionService(QThread):
         self._consecutive = 0
         self._currently_identified = None
 
+        self._last_person_bbox_center: tuple[float, float] | None = None
+        self._liveness_positions: list[tuple[float, float]] = []
+
         self._cat_learn_buffer: list = []  # list of grayscale crops
         self._person_learn_buffer: list = []  # list of (embedding, grayscale crop) tuples
 
@@ -173,6 +176,8 @@ class RecognitionService(QThread):
             self._person_learn_buffer = []
             if crop is not None:
                 self._check_appearance(name, crop)
+            x1, y1, x2, y2 = face.bbox
+            self._last_person_bbox_center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
             return name, "person"
 
         self._accumulate_unknown_person(embedding, crop)
@@ -357,6 +362,7 @@ class RecognitionService(QThread):
         else:
             self._last_candidate = candidate
             self._consecutive = 1
+            self._liveness_positions = []
 
         if candidate is None:
             if self._currently_identified is not None and self._consecutive >= config.RECOGNITION_CONSECUTIVE_FRAMES:
@@ -364,7 +370,26 @@ class RecognitionService(QThread):
                 self.identity_lost.emit()
             return
 
+        name, kind = candidate
+        if kind == "person" and self._last_person_bbox_center is not None:
+            self._liveness_positions.append(self._last_person_bbox_center)
+            if len(self._liveness_positions) > config.RECOGNITION_CONSECUTIVE_FRAMES:
+                self._liveness_positions.pop(0)
+
         if self._consecutive >= config.RECOGNITION_CONSECUTIVE_FRAMES and candidate != self._currently_identified:
+            if kind == "person" and not self._passes_liveness():
+                return  # looks frozen like a held-up photo/screen: keep waiting, never confirm
             self._currently_identified = candidate
-            name, kind = candidate
             self.identity_recognized.emit(name, kind)
+
+    def _passes_liveness(self) -> bool:
+        """Heuristic anti-photo check (see config.LIVENESS_*): a real face
+        always has tiny natural jitter; rejects confirmation if the face's
+        position was unnaturally frozen across the whole confirmation
+        window."""
+        if not config.LIVENESS_ENABLED or len(self._liveness_positions) < config.RECOGNITION_CONSECUTIVE_FRAMES:
+            return True
+        xs = [p[0] for p in self._liveness_positions]
+        ys = [p[1] for p in self._liveness_positions]
+        stddev = max(float(np.std(xs)), float(np.std(ys)))
+        return stddev >= config.LIVENESS_MIN_POSITION_STDDEV_PX

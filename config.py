@@ -35,6 +35,14 @@ LOCAL_LLM_MAX_TURNS_PER_SESSION = 20  # recycle the chat session after this many
 
 PET_NAME = "Sunshine"
 
+# Wake word (Lumo-style): when enabled, the always-listening mic ignores
+# any utterance that doesn't contain this word, and strips it from the
+# rest before treating it as a command/chat message. Off by default —
+# it's a bigger UX change (you have to address the pet by name every
+# time) than something to silently switch on.
+WAKE_WORD_ENABLED = False
+WAKE_WORD = PET_NAME
+
 # Voice: TTS via edge-tts (online neural voices) first; if that fails
 # (typically no internet) falls back to Piper, an offline neural voice
 # (good quality, ~60MB model downloaded from Hugging Face once); if even
@@ -115,6 +123,14 @@ SLEEP_DURATION_TICKS = (150, 300)   # ~9-18s
 # (in either axis) turns a click into a drag instead of toggling mute.
 DRAG_MOVE_THRESHOLD_PX = 6
 
+# Petting ("carezza", Lumo-style): small back-and-forth wiggling while held
+# down, without ever crossing DRAG_MOVE_THRESHOLD_PX net displacement, is
+# treated as a stroke rather than a drag attempt or a click. Measured as
+# cumulative path length traveled (sum of all incremental mouse deltas)
+# since mouse-down.
+PET_STROKE_MIN_PATH_PX = 60
+PET_STROKE_MOOD_VALENCE = 0.5  # positive mood nudge applied once per stroke gesture
+
 # Drop: when released mid-air, the pet falls back to the ground instead of
 # teleporting there, then plays a short bounce reaction on touchdown.
 FALL_ACCEL = 1.5          # pixels/tick^2 of downward acceleration while falling
@@ -166,6 +182,17 @@ AUTO_LEARN_MAX_FRAME_DIFF = 40.0   # cats: mean abs pixel diff vs. last buffered
                                     # buffer (avoids merging two different individuals who alternate
                                     # in front of the webcam)
 AUTO_LEARN_MIN_FACE_SIMILARITY = 0.35  # people: cosine similarity below this resets the learning buffer
+
+# Liveness ("anti-foto", Lumo-style): a real face held in front of the
+# webcam always has tiny natural jitter (breathing, hand tremor, micro
+# head movements); a printed photo or phone screen held up to impersonate
+# someone tends to stay unnaturally still. Heuristic only — not real
+# biometric liveness detection (no depth/IR sensor here) — just refuses to
+# *confirm* a known identity (blocking the allow_open_apps privilege) if
+# the face's position was frozen for the whole confirmation window;
+# doesn't affect plain conversation, which has no such privilege anyway.
+LIVENESS_ENABLED = True
+LIVENESS_MIN_POSITION_STDDEV_PX = 0.8
 
 # Appearance-change detection: heuristic pixel-diff comparison between the
 # current face crop and the first sample ever saved for that identity (no

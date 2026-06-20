@@ -95,6 +95,48 @@ partenza più piccoli (~95-230 frasi), ampliabili aggiungendo righe e
 rilanciando `python -m pet.mood.train` (riallena tutte le lingue, o
 `--lang en` per una sola).
 
+## Funzionalità ispirate a "Lumo" (compagno AI fisico su Raspberry Pi)
+
+Lumo (lumodevice.com, non quello di Proton — vedi sotto) è un progetto
+maker non affiliato: compagno AI locale su Raspberry Pi con schermo/LED,
+wake word, riconoscimento facciale anti-foto, enrollment guidato. Quattro
+sue idee sono state portate in Sunshine:
+
+- **Wake word** (`config.WAKE_WORD_ENABLED`, default `False`): se attivata,
+  `VoiceChatController` ignora ogni frase che non contenga `config.WAKE_WORD`
+  (default = `PET_NAME`, "Sunshine") e la rimuove dal resto prima di
+  trattarlo come comando. Disattivata di default perché cambia
+  l'esperienza in modo non banale (bisogna sempre nominare il pet) — vedi
+  `_on_utterance` in `pet/overlay/voice_chat.py`.
+- **Carezza** (`config.PET_STROKE_*`): un tocco prolungato col mouse che
+  rimane sotto la soglia di drag ma percorre un certo cammino cumulativo
+  (rigirando avanti e indietro) viene riconosciuto come carezza invece di
+  un tentativo di trascinamento o un click — vedi `mouseMoveEvent` in
+  `pet/overlay/pet_window.py`. Dà una piccola spinta positiva al mood
+  (`VoiceChatController.register_pat`).
+- **Anti-foto/liveness** (`config.LIVENESS_*`): euristico, non biometria
+  reale (nessun sensore di profondità) — un volto vero ha sempre un
+  minimo di micro-movimento naturale; se la posizione del volto resta
+  perfettamente immobile per tutta la finestra di conferma
+  (`RECOGNITION_CONSECUTIVE_FRAMES`), l'identità non viene confermata
+  (niente privilegio `allow_open_apps`), come se fosse ancora sconosciuta
+  — vedi `_passes_liveness`/`_update_candidate` in
+  `pet/recognition/recognizer.py`.
+- **Enrollment guidato multi-posa**: `pet/recognition/enroll.py` per le
+  persone non acquisisce più 30 frame qualunque, ma guida attraverso 5
+  pose (frontale, sinistra, destra, su, giù) con conto alla rovescia —
+  dà all'embedding centroide una varietà di pose migliore. Usa lo stesso
+  rilevatore InsightFace della pipeline live (non più Haar cascade per le
+  persone), salvando ritagli a colori invece che in scala di grigi
+  (qualità migliore); `train_person()` ora legge i campioni a colori di
+  default (compatibile comunque con i vecchi campioni in scala di grigi).
+  I gatti restano sul vecchio percorso Haar+LBPH, senza pose guidate.
+
+Nota terminologica (chiarita durante la sessione): "Lumo" di Proton è un
+chatbot **cloud**, non gira offline nonostante il marketing suggerisca il
+contrario ("niente ricerca web" ≠ "gira senza internet") — non è la fonte
+di queste funzionalità, è un prodotto diverso con lo stesso nome.
+
 ## Sicurezza minima
 
 I comandi PC con effetti reali (aprire programmi/siti — `intents.py`,
