@@ -62,6 +62,8 @@ class PetWindow(QWidget):
         self._drag_window_start = None
         self._falling = False
         self._fall_velocity = 0.0
+        self._fall_target_y = 0.0
+        self._fall_target_platform = None  # (x0, x1) if falling onto a window, else None
 
         self._update_pixmap()
 
@@ -131,15 +133,8 @@ class PetWindow(QWidget):
         if self._falling:
             self._fall_velocity = min(self._fall_velocity + config.FALL_ACCEL, config.FALL_MAX_SPEED)
             self._y += self._fall_velocity
-            if self._y >= self._ground_y:
-                self._y = self._ground_y
-                self._falling = False
-                self.state_machine.end_drag()
-                self.state_machine.trigger_react(config.LAND_REACT_TICKS)
-                self._last_state = self.state_machine.state
-                self.frame_index = 0
-                self._update_pixmap()
-                self.update()
+            if self._y >= self._fall_target_y:
+                self._land(self._fall_target_y, self._fall_target_platform)
             self.move(self._x, self._y)
             return
 
@@ -204,6 +199,42 @@ class PetWindow(QWidget):
         self._y = self._ground_y
         self.move(self._x, self._y)
         self.state_machine.trigger_react(15)
+
+    def _compute_landing(self):
+        """Where the pet should land if dropped right now: the top edge of
+        a window directly below its current x position (if its footprint
+        overlaps one enough), otherwise the ground. Returns
+        (landing_y, platform_bounds_or_None)."""
+        pet_left, pet_right = self._x, self._x + config.DISPLAY_SIZE
+        min_overlap = config.DISPLAY_SIZE * 0.5
+
+        best_top = None
+        best_bounds = None
+        for x0, x1, top in self._platforms:
+            if top < self._y or top > self._ground_y:
+                continue  # not below the pet's current position, or below the ground
+            overlap = min(pet_right, x1) - max(pet_left, x0)
+            if overlap < min_overlap:
+                continue
+            if best_top is None or top < best_top:
+                best_top = top
+                best_bounds = (x0, x1)
+
+        if best_bounds is not None:
+            return best_top - config.DISPLAY_SIZE, best_bounds
+        return self._ground_y, None
+
+    def _land(self, landing_y: float, platform_bounds):
+        self._y = landing_y
+        self._falling = False
+        self._on_platform = platform_bounds is not None
+        self._platform_bounds = platform_bounds
+        self.state_machine.end_drag()
+        self.state_machine.trigger_react(config.LAND_REACT_TICKS)
+        self._last_state = self.state_machine.state
+        self.frame_index = 0
+        self._update_pixmap()
+        self.update()
 
     def _update_pixmap(self):
         self.current_pixmap = self.animator.get_frame(self.state_machine.state.value, self.frame_index)
@@ -303,17 +334,14 @@ class PetWindow(QWidget):
             right_bound = self._screen_rect.x() + self._screen_rect.width() - config.DISPLAY_SIZE
             self._x = max(left_bound, min(self._x, right_bound))
 
-            if self._y >= self._ground_y:
-                self._y = self._ground_y
-                self.state_machine.end_drag()
-                self.state_machine.trigger_react(config.LAND_REACT_TICKS)
-                self._last_state = self.state_machine.state
-                self.frame_index = 0
-                self._update_pixmap()
-                self.update()
+            landing_y, landing_platform = self._compute_landing()
+            if self._y >= landing_y:
+                self._land(landing_y, landing_platform)
             else:
                 self._falling = True
                 self._fall_velocity = 0.0
+                self._fall_target_y = landing_y
+                self._fall_target_platform = landing_platform
             self.move(self._x, self._y)
         else:
             self._set_muted(not self._muted)
