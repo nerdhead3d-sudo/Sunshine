@@ -229,3 +229,154 @@ tests` su `windows-latest` a ogni push/PR (necessario: il codice usa
 `pet.overlay.pet_window`, che porta dentro tutto lo stack (PySide6,
 gpt4all, ecc.) anche se i test stessi non istanziano mai un'app Qt vera
 (usano `PetWindow.__new__` per evitare `__init__`).
+
+## Backend di chat selezionabile dall'utente (locale/Ollama/online)
+
+In vista del programma di installazione, è stato aggiunto un meccanismo
+per cambiare backend di chat **a runtime, dal tray menu**, senza toccare
+`config.py` né riavviare l'app:
+
+- `pet/settings_store.py`: piccolo store JSON (`pet/data/settings.json`,
+  in `.gitignore` come gli altri file dati) per `chat_backend` (`"local"`
+  gpt4all / `"ollama"` / `"openai"`) e `openai_api_key`/`openai_model`.
+  Separato da `config.py` apposta: `config.py` resta "default di chi
+  sviluppa", questo è "scelta dell'utente finale", persistita per
+  identità della macchina, non del codice.
+- `pet/openai_client.py`: nuovo backend online (chiave API propria
+  dell'utente, mai distribuita con l'app), stessa interfaccia
+  `build_messages`/`stream_reply` di `OllamaClient` — drop-in replacement.
+- `pet/overlay/voice_chat.py::make_chat_client()`: factory che legge
+  `settings_store` e istanzia il client giusto (con fallback al backend
+  locale se è selezionato "openai" ma non è stata ancora inserita una
+  chiave, invece di andare in errore); `VoiceChatController.
+  reload_chat_backend()` lo richiama per cambiare client senza perdere
+  cronologia/identità attive.
+- `pet/overlay/pet_window.py::SettingsDialog`: nuova voce "Impostazioni..."
+  nel tray menu (prima di "Esci"), combobox backend + campo chiave API
+  OpenAI (mascherato).
+
+## Programma di installazione Windows (PyInstaller + Inno Setup)
+
+Cartella `installer/`, separata dal codice dell'app:
+- `sunshine.spec`: build PyInstaller in modalità `--onedir` (non
+  `--onefile` — l'app scarica/usa già modelli pesanti da una cartella
+  reale su disco, un unico exe che si autoestrae in temp a ogni avvio non
+  avrebbe senso). Include i pesi del mood classifier (`pet/mood/model/`,
+  mai generati a runtime); sprite e modelli di riconoscimento/voce restano
+  esclusi perché generati/scaricati al primo avvio come già accade oggi.
+- `setup.iss`: script Inno Setup. Installa in `{autopf}` ma con
+  `PrivilegesRequired=lowest` (default per-utente, niente prompt UAC, come
+  VS Code) — cambiabile a `admin` se in futuro serve un'installazione
+  macchina-wide. Pagine/funzionalità:
+  - Wizard multilingua nativo (italiano/inglese) — sceglie sia la lingua
+    dell'installer **sia** la lingua di default in cui Sunshine
+    parla/ascolta (scritta in `install_settings.json`, vedi sotto).
+  - Pagina custom per scegliere il monitor (`GetSystemMetrics(SM_CMONITORS)`
+    per il conteggio reale, elenco "Monitor 1/2/3..." anziché provare a
+    enumerarne la geometria via Pascal Script — più semplice, comunque
+    coincide con l'indice che `config.SECONDARY_SCREEN_INDEX` si aspetta).
+  - Check Ollama: lancia `Sunshine.exe --check-ollama` (vedi `main.py`)
+    subito dopo aver copiato i file; se assente, avvisa e offre di aprire
+    ollama.com — non lo installa in autonomia (non si esegue mai un
+    installer esterno silenziosamente).
+  - Task opzionale "scarica modelli ora" (default selezionato): lancia
+    `Sunshine.exe --download-models --lang=<lingua scelta>`
+    (`installer/download_models.py`) invece di far scoprire all'utente i
+    download silenziosi al primo avvio reale.
+  - Checkbox avvio automatico al login (collegamento in `{userstartup}`,
+    sostituisce `Avvia Sunshine.vbs` per chi installa così — il `.vbs`
+    resta per chi lancia da sorgente).
+  - Disinstallazione: chiede se cancellare anche `%LOCALAPPDATA%\Sunshine`
+    (conversazioni, volti imparati, modelli scaricati) — non lo fa mai
+    senza chiedere, e di default i dati restano.
+  - **Niente firma del codice** (vedi conversazione: EV/OV richiedono una
+    persona giuridica registrata e un costo annuo, non ancora
+    giustificato) — SmartScreen avviserà al primo avvio, comportamento
+    atteso finché non si firma.
+- `download_models.py`: stessa logica di download usata pigramente dai
+  vari moduli (`pet/voice/stt.py`, `tts.py`, `local_llm_client.py`), solo
+  richiamata tutta insieme all'avvio invece che al bisogno.
+- `build.ps1`: automatizza i due passi (PyInstaller poi `ISCC.exe`).
+  Richiede Inno Setup 6 installato a parte (non scaricato/installato da
+  questo script).
+
+**Path scrivibili quando installato**: `config.py` ora distingue dev/CI
+(`sys.frozen` assente → path relativi a `BASE_DIR` come sempre, per non
+rompere `.gitignore`/test esistenti) da installazione reale (`sys.frozen`
+presente, tipico di un eseguibile PyInstaller → sprite, DB, modelli e
+volti imparati vanno tutti sotto `%LOCALAPPDATA%\Sunshine`, scrivibile
+senza admin anche se l'app è in `Program Files`). Le scelte di lingua/
+monitor fatte nel wizard vengono scritte da `setup.iss` in
+`%LOCALAPPDATA%\Sunshine\data\install_settings.json` e applicate da
+`config.py::_apply_install_settings()` come override sopra i default
+hardcoded — assente per chi non installa così, quindi nessun impatto su
+dev/CI.
+
+**Verificato con una build reale** (PyInstaller installato ad-hoc nel venv
+di sviluppo, non è una dipendenza dell'app): il primo tentativo di
+`sunshine.spec` mancava di due gruppi di file dati non-Python che
+l'analisi statica di PyInstaller non scopre da sola (segue solo gli
+import, non le letture a percorso runtime) — **bug reale trovato e
+corretto**, non solo teorico:
+- `pet/memory/schema.sql` (letto da `pet/memory/store.py`,
+  `FileNotFoundError` al primo avvio dell'eseguibile congelato).
+- `cv2/data/*.xml` (i cascade Haar per il riconoscimento gatti — l'hook
+  PyInstaller per `cv2` porta `cv2/data/__init__.py` ma non i file `.xml`
+  accanto).
+Dopo il fix, `dist\Sunshine\Sunshine.exe` lanciato da una cartella pulita
+(senza venv attivo) genera correttamente gli sprite, scarica i modelli
+(Whisper, InsightFace) sotto `%LOCALAPPDATA%\Sunshine\`, scrive
+`pet_memory.db` e gira stabile per oltre un minuto senza errori in
+`pet.log`. **Non verificato**: la compilazione `setup.iss` con Inno Setup
+(non installato su questa macchina) e l'installazione/disinstallazione
+vere e proprie — solo l'exe PyInstaller è stato testato direttamente.
+
+## Porting Raspberry Pi (progetto separato `c:\Users\Wolfg\progetti\sunshinepi\`)
+
+Su richiesta dell'utente è stato avviato un porting headless di questo
+progetto per Raspberry Pi, in una cartella **separata**
+(`c:\Users\Wolfg\progetti\sunshinepi\`, repo/venv proprio, non un
+sottoprogetto di questo) — non toccare quella cartella aspettandosi che
+sia sincronizzata con questa: è stata scritta una volta, copiando e
+adattando il codice da qui, e non viene mantenuta in parallelo
+automaticamente. Se questo progetto cambia (es. nuove skill, nuovo schema
+DB), il porting sul Pi va aggiornato a mano se serve.
+
+Scritto/portato da una sessione Claude Code su **PC Windows senza hardware
+Pi reale disponibile** — verificato solo a livello di sintassi/import e
+con qualche test di logica pura (intents, store, mood classifier,
+language_commands) lanciati nel venv del progetto Pi su Windows. **Non
+testato su un Raspberry Pi vero**: vedi `sunshinepi/README_PI.md`, sezione
+"Cosa va verificato sul Pi vero", prima di considerarlo pronto per la
+produzione.
+
+Decisioni principali del porting (dettagli completi in
+`sunshinepi/README_PI.md`):
+- **Niente GUI**: rimossa interamente la dipendenza da PySide6/Qt, non
+  solo l'overlay grafico — anche `Signal`/`QObject`/`QThread`/`QTimer`
+  sono stati sostituiti con un sostituto minimale sincrono
+  (`pet/util/events.py`: `Signal` a callback-list + `call_later()` via
+  `threading.Timer`), per evitare di portarsi dietro Qt su un Pi headless
+  che non lo userebbe mai.
+- **LLM**: solo Ollama (non gpt4all/llama.cpp come l'opzione di default
+  qui) — Ollama ha build ARM64 ufficiali mantenute, modello consigliato
+  `llama3.2:1b` (un Pi senza GPU non sopporta nulla di più grande con
+  latenza accettabile).
+- **Riconoscimento volti via webcam: non portato** (`config.
+  FACE_RECOGNITION_ENABLED = False`, nessun codice di recognition copiato)
+  — gli wheel ARM di InsightFace/onnxruntime non sono garantiti su ogni
+  distro Pi, e un Pi può stare benissimo senza telecamera puntata su una
+  scrivania. Conseguenza: sul Pi esiste **una sola identità** ("Io"),
+  niente saluti per nome né routine mattina/sera per persona specifica.
+- **YouTube embedded e "apri X" (app/siti): rimossi**, non solo
+  disabilitati — su un Pi headless senza display/browser non c'è nulla in
+  cui mostrare un video o cosa aprire.
+- **winsound/ctypes.windll → equivalenti Linux**: `ffplay` (ffmpeg) per la
+  riproduzione TTS, `speaker-test` per il beep della sveglia, `amixer`/
+  `playerctl` per volume/media keys.
+- **Wake word attiva di default sul Pi** (`WAKE_WORD_ENABLED = True`,
+  diverso dal default `False` di qui) — senza mouse/schermo non c'è altro
+  modo per evitare che risponda a rumori di fondo.
+- Mood classifier, memoria SQLite, STT (faster-whisper) e TTS (cascata
+  edge-tts → Piper → pyttsx3) sono stati portati **quasi invariati**,
+  cambiando solo la riproduzione audio e rimuovendo la base Qt.

@@ -23,18 +23,37 @@ from datetime import datetime, timedelta, timezone
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 import config
+from pet import settings_store
 from pet.memory.store import MemoryStore
 from pet.mood.classifier import get_classifier
 from pet.skills import commands, intents, language_commands
 from pet.voice.stt import ContinuousListener
 from pet.voice.tts import SpeakWorker, stop_playback
 
-if config.USE_LOCAL_LLM:
-    from pet.local_llm_client import LocalLLMClient as ChatClient
-else:
-    from pet.ollama_client import OllamaClient as ChatClient
-
 DEFAULT_IDENTITY = "Io"
+
+
+def make_chat_client(settings: dict | None = None):
+    """Builds the chat backend client chosen in settings_store (tray
+    "Impostazioni..." dialog): local gpt4all, local Ollama, or online
+    OpenAI. Falls back to the local backend if "openai" is selected but no
+    API key was entered yet, rather than crashing the whole reply loop."""
+    settings = settings or settings_store.load()
+    backend = settings["chat_backend"]
+
+    if backend == settings_store.BACKEND_OPENAI and settings["openai_api_key"]:
+        from pet.openai_client import OpenAIClient
+
+        return OpenAIClient(settings["openai_api_key"], settings["openai_model"])
+
+    if backend == settings_store.BACKEND_OLLAMA:
+        from pet.ollama_client import OllamaClient
+
+        return OllamaClient()
+
+    from pet.local_llm_client import LocalLLMClient
+
+    return LocalLLMClient()
 
 _SENTENCE_END_RE = re.compile(r"[.!?](?:\s+|$)")
 _ACTION_RE = re.compile(r"\*([^*]+)\*")
@@ -118,7 +137,7 @@ class VoiceChatController(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._store = MemoryStore(config.DATA_DIR / "pet_memory.db")
-        self._client = ChatClient()
+        self._client = make_chat_client()
 
         self._identity_name = ""
         self._identity_id: int | None = None
@@ -166,6 +185,13 @@ class VoiceChatController(QObject):
     def set_paused(self, muted: bool):
         self._muted = muted
         self._refresh_listening()
+
+    def reload_chat_backend(self):
+        """Swaps the active chat client after settings_store changes
+        (tray "Impostazioni..." dialog), without restarting the app or
+        losing the active identity's conversation history — only the
+        backend object itself is replaced."""
+        self._client = make_chat_client()
 
     def interrupt(self) -> bool:
         """Stops whatever Sunshine is currently thinking/saying (e.g. on

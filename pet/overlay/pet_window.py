@@ -3,9 +3,20 @@ import re
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon, QPainter
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLineEdit,
+    QMenu,
+    QSystemTrayIcon,
+    QWidget,
+)
 
 import config
+from pet import settings_store
 from pet.behavior.state_machine import PetStateMachine, State
 from pet.overlay.action_bubble import ActionBubble
 from pet.overlay.sprite_animator import SpriteAnimator
@@ -15,6 +26,52 @@ from pet.overlay.youtube_player import YouTubePlayerWindow
 from pet.recognition.recognizer import RecognitionService
 
 _PLACEHOLDER_NAME_RE = re.compile(r"^Persona\d+$")
+
+_BACKEND_LABELS = {
+    settings_store.BACKEND_LOCAL: "Locale offline (gpt4all)",
+    settings_store.BACKEND_OLLAMA: "Locale via Ollama",
+    settings_store.BACKEND_OPENAI: "Online (ChatGPT/OpenAI)",
+}
+_BACKEND_VALUES = list(_BACKEND_LABELS.keys())
+
+
+class SettingsDialog(QDialog):
+    """Tray "Impostazioni..." dialog: lets the user switch the chat
+    backend between the two offline options and an online one (their own
+    OpenAI API key, never bundled with the app) without editing config.py
+    or restarting Sunshine."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Impostazioni Sunshine")
+        self.setModal(True)
+
+        current = settings_store.load()
+
+        self._backend_combo = QComboBox(self)
+        for value in _BACKEND_VALUES:
+            self._backend_combo.addItem(_BACKEND_LABELS[value], value)
+        self._backend_combo.setCurrentIndex(_BACKEND_VALUES.index(current["chat_backend"]))
+
+        self._api_key_edit = QLineEdit(self)
+        self._api_key_edit.setEchoMode(QLineEdit.Password)
+        self._api_key_edit.setPlaceholderText("sk-...")
+        self._api_key_edit.setText(current["openai_api_key"])
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QFormLayout(self)
+        layout.addRow("Risposte:", self._backend_combo)
+        layout.addRow("Chiave API OpenAI:", self._api_key_edit)
+        layout.addRow(buttons)
+
+    def save(self):
+        settings_store.save({
+            "chat_backend": self._backend_combo.currentData(),
+            "openai_api_key": self._api_key_edit.text().strip(),
+        })
 
 
 class PetWindow(QWidget):
@@ -114,6 +171,8 @@ class PetWindow(QWidget):
         self.mute_action = menu.addAction("Muta microfono")
         self.mute_action.setCheckable(True)
         self.mute_action.toggled.connect(self._set_muted)
+        menu.addSeparator()
+        menu.addAction("Impostazioni...", self._open_settings)
         menu.addSeparator()
         menu.addAction("Esci", QApplication.quit)
 
@@ -310,6 +369,12 @@ class PetWindow(QWidget):
             text = f"Ti sei fatto la barba, {name}?"
         self.voice_chat.announce(text)
         self.state_machine.trigger_react(10)
+
+    def _open_settings(self):
+        dialog = SettingsDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            dialog.save()
+            self.voice_chat.reload_chat_backend()
 
     def _set_muted(self, muted: bool):
         self._muted = muted

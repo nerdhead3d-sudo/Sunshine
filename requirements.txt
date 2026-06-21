@@ -9,6 +9,7 @@ torch>=2.5
 gpt4all>=2.8
 huggingface_hub>=0.25
 ollama>=0.6
+openai>=1.50  # optional online chat backend, see pet/openai_client.py + tray "Impostazioni..."
 edge-tts>=7.0
 piper-tts>=1.4
 pyttsx3>=2.99

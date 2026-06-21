@@ -1,9 +1,25 @@
+import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# When running from source (dev/CI), all writable data lives under
+# BASE_DIR like before. When running from a PyInstaller-frozen install
+# (sys.frozen, see the installer build), BASE_DIR is typically inside
+# Program Files, which isn't writable without admin rights — sprites,
+# downloaded models, the conversation DB, and learned faces instead go to
+# %LOCALAPPDATA%\Sunshine, so the app works from a standard non-admin
+# install and survives an upgrade/reinstall (those files aren't touched by
+# the installer at all).
+if getattr(sys, "frozen", False):
+    _WRITABLE_ROOT = Path(os.environ.get("LOCALAPPDATA", BASE_DIR)) / "Sunshine"
+else:
+    _WRITABLE_ROOT = BASE_DIR / "pet"  # dev/CI: unchanged paths, same as before this existed
+
 ASSETS_DIR = BASE_DIR / "pet" / "assets"
-SPRITES_DIR = ASSETS_DIR / "sprites"
-DATA_DIR = BASE_DIR / "pet" / "data"
+SPRITES_DIR = _WRITABLE_ROOT / "assets" / "sprites" if getattr(sys, "frozen", False) else ASSETS_DIR / "sprites"
+DATA_DIR = _WRITABLE_ROOT / "data"
 
 OLLAMA_HOST = "http://127.0.0.1:11434"
 OLLAMA_MODEL = "llama3.2:1b"
@@ -27,7 +43,7 @@ DEFAULT_LANGUAGE = "it"
 USE_LOCAL_LLM = True
 LOCAL_LLM_REPO_ID = "bartowski/Llama-3.2-1B-Instruct-GGUF"
 LOCAL_LLM_FILENAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"  # ~770MB, runs fine on 8GB RAM, CPU-only
-LOCAL_MODEL_DIR = BASE_DIR / "pet" / "local_models"
+LOCAL_MODEL_DIR = _WRITABLE_ROOT / "local_models"
 LOCAL_LLM_CONTEXT = 2048
 LOCAL_LLM_MAX_TOKENS = 100  # keeps spoken replies short instead of rambling
 LOCAL_LLM_MAX_TURNS_PER_SESSION = 20  # recycle the chat session after this many turns, so the
@@ -52,10 +68,10 @@ WAKE_WORD = PET_NAME
 # and VoiceChatController's language-switch voice commands).
 TTS_RATE = "+25%"   # edge-tts speaking-rate offset; "+0%" for the normal speed
 PIPER_VOICE_REPO = "rhasspy/piper-voices"
-PIPER_MODEL_DIR = BASE_DIR / "pet" / "local_models" / "piper"
+PIPER_MODEL_DIR = LOCAL_MODEL_DIR / "piper"
 STT_SAMPLE_RATE = 16000
 STT_WHISPER_MODEL = "small"  # tiny/base/small/medium: bigger = more accurate but slower/heavier
-STT_WHISPER_MODEL_DIR = BASE_DIR / "pet" / "local_models" / "whisper"
+STT_WHISPER_MODEL_DIR = LOCAL_MODEL_DIR / "whisper"
 
 LANGUAGE_NAMES = {
     "it": "italiano", "en": "inglese", "fr": "francese",
@@ -163,14 +179,14 @@ RECOGNITION_INTERVAL_MS = 400
 RECOGNITION_CONFIDENCE_THRESHOLD = 65.0  # cat LBPH distance: lower = more confident (stricter)
 RECOGNITION_CONSECUTIVE_FRAMES = 6       # frames needed in a row before confirming (~2.4s)
 RECOGNITION_DIR = BASE_DIR / "pet" / "recognition"
-RECOGNITION_SAMPLES_DIR = RECOGNITION_DIR / "samples"
-RECOGNITION_MODELS_DIR = RECOGNITION_DIR / "models"
+RECOGNITION_SAMPLES_DIR = (_WRITABLE_ROOT / "recognition" / "samples") if getattr(sys, "frozen", False) else RECOGNITION_DIR / "samples"
+RECOGNITION_MODELS_DIR = (_WRITABLE_ROOT / "recognition" / "models") if getattr(sys, "frozen", False) else RECOGNITION_DIR / "models"
 
 # Face embedding model for people (InsightFace, ONNX Runtime, CPU). "_sc"
 # is the small/compact variant (~15MB) chosen for compatibility with
 # modest hardware over the larger, slightly more accurate "_l" variant.
 FACE_EMBEDDING_MODEL = "buffalo_sc"
-FACE_EMBEDDING_MODEL_DIR = RECOGNITION_DIR / "face_models"
+FACE_EMBEDDING_MODEL_DIR = (_WRITABLE_ROOT / "recognition" / "face_models") if getattr(sys, "frozen", False) else RECOGNITION_DIR / "face_models"
 FACE_EMBEDDING_DET_SIZE = (320, 320)
 FACE_EMBEDDING_SIMILARITY_THRESHOLD = 0.40  # cosine similarity above which two faces count as the same person
 
@@ -202,3 +218,28 @@ LIVENESS_MIN_POSITION_STDDEV_PX = 0.8
 APPEARANCE_HAIR_FRACTION = 0.25    # top fraction of the 200x200 face crop = hair/forehead region
 APPEARANCE_BEARD_FRACTION = 0.30   # bottom fraction = chin/beard region
 APPEARANCE_DIFF_THRESHOLD = 45.0   # mean abs pixel diff above which a region counts as "changed"
+
+# Installer-time choices (monitor, spoken language), written once by
+# installer/setup.iss as plain JSON and applied here as overrides on top
+# of the defaults above — absent entirely for dev/source runs and for
+# anyone who installs without going through the installer, in which case
+# these two lines are a no-op and the hardcoded defaults above stand.
+def _apply_install_settings():
+    import json
+
+    install_settings_path = _WRITABLE_ROOT / "data" / "install_settings.json"
+    if not install_settings_path.exists():
+        return
+    try:
+        data = json.loads(install_settings_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+
+    global SECONDARY_SCREEN_INDEX, DEFAULT_LANGUAGE
+    if "secondary_screen_index" in data:
+        SECONDARY_SCREEN_INDEX = int(data["secondary_screen_index"])
+    if data.get("language") in SUPPORTED_LANGUAGES:
+        DEFAULT_LANGUAGE = data["language"]
+
+
+_apply_install_settings()
