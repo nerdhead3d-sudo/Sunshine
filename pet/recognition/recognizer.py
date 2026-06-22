@@ -1,14 +1,15 @@
 """Webcam-based identity recognition, run off the UI thread. People are
 recognized via deep-learning face embeddings (InsightFace, see
-face_embeddings.py); cats stay on Haar cascades + LBPH (InsightFace's
-detector/aligner only understands human face geometry). No manual
-enrollment is required: unknown faces/cat-faces that stay in frame for a
-while are learned automatically and given a placeholder name
+face_embeddings.py); cats via HOG feature embeddings (see
+cat_features.py — InsightFace's detector/aligner only understands human
+face geometry, so cats can't use it, but they get the same
+centroid+cosine-similarity matching shape instead of raw-pixel LBPH). No
+manual enrollment is required: unknown faces/cat-faces that stay in frame
+for a while are learned automatically and given a placeholder name
 ("Persona1", "Gatto1", ...), which the rest of the app can later rename to
 the person's real name once they say it out loud.
 """
 
-import json
 import time
 
 import cv2
@@ -18,17 +19,17 @@ from PySide6.QtCore import QThread, Signal
 
 import config
 from pet.logging_setup import get_logger
-from pet.recognition import face_embeddings
-from pet.recognition.train import MODEL_NAMES, train
+from pet.recognition import cat_features, face_embeddings
+from pet.recognition.train import train
 
 
 class RecognitionService(QThread):
     """Continuously reads the webcam: people are matched against stored
-    face embeddings (cosine similarity), cats against a trained LBPH
-    model. Emits `identity_recognized` once a known candidate has been
-    stable for several consecutive frames, and `identity_learned` once
-    enough samples of a previously-unknown face/cat-face have been
-    collected and auto-trained.
+    face embeddings (cosine similarity), cats against stored HOG feature
+    centroids (cosine similarity too). Emits `identity_recognized` once a
+    known candidate has been stable for several consecutive frames, and
+    `identity_learned` once enough samples of a previously-unknown
+    face/cat-face have been collected and auto-trained.
     """
 
     identity_recognized = Signal(str, str)  # name, kind ("person" | "cat")
@@ -43,7 +44,7 @@ class RecognitionService(QThread):
         self._cat_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalcatface_extended.xml"
         )
-        self._cat_recognizer, self._cat_labels = self._load_cat_model()
+        self._cat_features: dict[str, np.ndarray] = self._load_cat_features()
 
         self._person_embeddings: dict[str, np.ndarray] = self._load_person_embeddings()
 
@@ -63,20 +64,22 @@ class RecognitionService(QThread):
     # -- model loading ----------------------------------------------------
 
     @staticmethod
-    def _load_cat_model():
-        model_name = MODEL_NAMES["cat"]
-        model_path = config.RECOGNITION_MODELS_DIR / f"{model_name}.yml"
-        labels_path = config.RECOGNITION_MODELS_DIR / f"{model_name}_labels.json"
-        if not model_path.exists() or not labels_path.exists():
-            return None, {}
+    def _cat_features_dir():
+        path = config.RECOGNITION_MODELS_DIR / "cat"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
-        recognizer = cv2.face.LBPHFaceRecognizer_create()
-        recognizer.read(str(model_path))
-        labels = {int(k): v for k, v in json.loads(labels_path.read_text(encoding="utf-8")).items()}
-        return recognizer, labels
+    def _load_cat_features(self) -> dict[str, np.ndarray]:
+        features = {}
+        for path in self._cat_features_dir().glob("*.npy"):
+            try:
+                features[path.stem] = np.load(path)
+            except Exception:
+                get_logger().exception("Failed to load cat feature centroid from %s", path)
+        return features
 
     def _reload_cat_model(self):
-        self._cat_recognizer, self._cat_labels = self._load_cat_model()
+        self._cat_features = self._load_cat_features()
 
     @staticmethod
     def _person_embeddings_dir():
@@ -117,6 +120,8 @@ class RecognitionService(QThread):
             if embedding is not None:
                 self._person_embeddings[new_name] = embedding
         else:
+            old_npy = self._cat_features_dir() / f"{old_name}.npy"
+            old_npy.unlink(missing_ok=True)  # train(kind) below recomputes new_name.npy from the renamed sample dir
             train(kind)
             self._reload_cat_model()
 
@@ -242,7 +247,7 @@ class RecognitionService(QThread):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         return cv2.resize(gray[y1:y2, x1:x2], (200, 200))
 
-    # -- cats: Haar cascade + LBPH (unchanged) -------------------------------
+    # -- cats: Haar cascade + HOG feature embeddings -------------------------
 
     def _process_cat(self, gray):
         roi = self._detect_crop(gray, self._cat_cascade)
@@ -250,17 +255,24 @@ class RecognitionService(QThread):
             self._cat_learn_buffer = []
             return None
 
-        name = None
-        if self._cat_recognizer is not None:
-            label, confidence = self._cat_recognizer.predict(roi)
-            if confidence <= config.RECOGNITION_CONFIDENCE_THRESHOLD and label in self._cat_labels:
-                name = self._cat_labels[label]
+        descriptor = cat_features.extract(roi)
+        name = self._match_cat(descriptor)
 
         if name is not None:
             self._cat_learn_buffer = []
             return name, "cat"
 
         self._accumulate_unknown_cat(roi)
+        return None
+
+    def _match_cat(self, descriptor: np.ndarray) -> str | None:
+        best_name, best_similarity = None, -1.0
+        for name, known_descriptor in self._cat_features.items():
+            similarity = cat_features.cosine_similarity(descriptor, known_descriptor)
+            if similarity > best_similarity:
+                best_name, best_similarity = name, similarity
+        if best_similarity >= config.CAT_FEATURE_SIMILARITY_THRESHOLD:
+            return best_name
         return None
 
     @staticmethod

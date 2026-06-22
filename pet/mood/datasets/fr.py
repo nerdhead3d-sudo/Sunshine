@@ -210,4 +210,88 @@ EXAMPLES: list[tuple[str, str]] = [
     ("on m'a accusé de quelque chose que je n'ai pas fait", "en_colere"),
     ("ils ont annulé l'événement sans aucun remboursement", "en_colere"),
     ("le service client m'a mis en attente pendant une heure", "en_colere"),
+
+    # --- troisième vague ---
+
+    # heureux
+    ("je viens de recevoir une excellente nouvelle au téléphone", "heureux"),
+    ("on a fêté mon anniversaire et c'était parfait", "heureux"),
+    ("j'ai retrouvé un vieil ami par hasard, quelle joie", "heureux"),
+    ("le soleil brille et je me sens merveilleusement bien", "heureux"),
+    ("j'ai enfin terminé ce projet, je suis aux anges", "heureux"),
+    ("toute la famille était réunie aujourd'hui, quel bonheur", "heureux"),
+    ("j'ai gagné un petit concours, je suis ravi", "heureux"),
+    ("ce repas était délicieux, je suis comblé", "heureux"),
+    ("j'ai dansé toute la soirée, c'était génial", "heureux"),
+    ("ma plante a enfin fleuri, ça me rend tout joyeux", "heureux"),
+    ("on m'a fait un compliment sincère aujourd'hui", "heureux"),
+    ("j'ai bien dormi et je me sens plein d'entrain", "heureux"),
+
+    # affectueux
+    ("tu prends toujours soin de moi quand je suis malade", "affectueux"),
+    ("j'aime te tenir la main en silence", "affectueux"),
+    ("ton sourire me rend toujours heureux", "affectueux"),
+    ("tu es la première personne à qui je pense le matin", "affectueux"),
+    ("je garde précieusement chaque souvenir avec toi", "affectueux"),
+    ("tu sais toujours me rassurer avec des mots simples", "affectueux"),
+    ("je t'écrirais une lettre juste pour te dire merci d'exister", "affectueux"),
+    ("tu es la personne la plus douce que je connaisse", "affectueux"),
+    ("j'aime te regarder dormir paisiblement", "affectueux"),
+    ("merci de m'accepter exactement comme je suis", "affectueux"),
+
+    # excite
+    ("on vient de m'annoncer une promotion, je suis surexcité", "excite"),
+    ("le colis que j'attendais depuis des semaines arrive enfin demain", "excite"),
+    ("je vais rencontrer mon idole la semaine prochaine", "excite"),
+    ("on part en road trip improvisé ce soir", "excite"),
+    ("j'ai trouvé des billets pour le spectacle complet", "excite"),
+    ("demain c'est le grand lancement, je n'arrive pas à tenir en place", "excite"),
+    ("je viens de débloquer un niveau impossible, quelle adrénaline", "excite"),
+    ("on m'a invité à un événement exclusif ce week-end", "excite"),
+    ("je sens que cette idée va vraiment marcher, je suis galvanisé", "excite"),
+    ("le compte à rebours pour le voyage a enfin commencé", "excite"),
+
+    # neutre
+    ("j'ai rangé les courses dans le frigo", "neutre"),
+    ("je viens de recharger mon téléphone", "neutre"),
+    ("j'ai répondu à quelques emails de travail", "neutre"),
+    ("je classe des documents administratifs", "neutre"),
+    ("j'ai arrosé les plantes ce matin", "neutre"),
+    ("je vérifie l'heure du prochain bus", "neutre"),
+    ("j'ai noté mes dépenses du mois", "neutre"),
+    ("je teste une nouvelle recette pour ce soir", "neutre"),
+    ("j'ai changé les draps du lit", "neutre"),
+    ("je règle les paramètres de mon ordinateur", "neutre"),
+
+    # ennuye
+    ("cette série n'a plus aucun nouvel épisode, je tourne en rond", "ennuye"),
+    ("je suis bloqué à la maison sans rien à faire d'intéressant", "ennuye"),
+    ("ce stage est d'un ennui sans fin", "ennuye"),
+    ("j'ai relu trois fois le même message faute de mieux", "ennuye"),
+    ("personne n'est disponible pour sortir aujourd'hui", "ennuye"),
+    ("cette salle d'attente n'a même pas de magazine intéressant", "ennuye"),
+    ("je fais défiler mon téléphone sans but précis", "ennuye"),
+    ("ce documentaire est d'une lenteur insupportable", "ennuye"),
+    ("je n'ai plus rien à lire dans ma bibliothèque", "ennuye"),
+    ("cette tâche répétitive m'use complètement", "ennuye"),
+
+    # triste
+    ("j'ai vu une photo qui m'a rappelé une époque révolue", "triste"),
+    ("je n'arrive pas à me sentir mieux depuis des jours", "triste"),
+    ("personne n'a semblé remarquer mon absence", "triste"),
+    ("j'ai relu nos vieux messages et ça m'a brisé le cœur", "triste"),
+    ("je me sens invisible dans cette pièce pleine de monde", "triste"),
+    ("le silence de la maison me pèse énormément ce soir", "triste"),
+    ("j'aurais aimé dire au revoir correctement", "triste"),
+    ("je n'ai plus envie de raconter comment je me sens", "triste"),
+
+    # en_colere
+    ("ils ont encore changé l'horaire sans aucun avertissement", "en_colere"),
+    ("personne ne prend mes objections au sérieux", "en_colere"),
+    ("on m'a interrompu pour la dixième fois aujourd'hui", "en_colere"),
+    ("ce vendeur m'a clairement menti sur le produit", "en_colere"),
+    ("ils ont saboté mon travail sans la moindre excuse", "en_colere"),
+    ("je suis tanné de toujours devoir tout réexpliquer", "en_colere"),
+    ("on m'a coupé la parole devant tout le monde", "en_colere"),
+    ("cette panne d'internet dure depuis trois jours sans réponse", "en_colere"),
 ]

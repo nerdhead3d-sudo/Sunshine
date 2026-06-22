@@ -16,11 +16,30 @@ _lock = threading.Lock()
 BACKEND_LOCAL = "local"      # offline gpt4all/llama.cpp (pet/local_llm_client.py)
 BACKEND_OLLAMA = "ollama"    # local Ollama server (pet/ollama_client.py)
 BACKEND_OPENAI = "openai"    # online, user-supplied API key (pet/openai_client.py)
+BACKEND_ANTHROPIC = "anthropic"  # online, user-supplied API key (pet/anthropic_client.py)
 
 _DEFAULTS = {
     "chat_backend": BACKEND_LOCAL if config.USE_LOCAL_LLM else BACKEND_OLLAMA,
     "openai_api_key": "",
     "openai_model": "gpt-4o-mini",
+    "anthropic_api_key": "",
+    "anthropic_model": "claude-haiku-4-5",
+    # Ollama also has a free hosted "cloud" tier now (ollama.com — `ollama
+    # signin` once, then `ollama pull <model>:cloud`), still served through
+    # the exact same local Ollama API/client, just a different model name
+    # (and optionally a different host, if pointing straight at the cloud
+    # endpoint instead of proxying through a local `ollama serve`). Left
+    # blank by default = use config.OLLAMA_MODEL/OLLAMA_HOST as before.
+    "ollama_model": "",
+    "ollama_host": "",
+    # "auto" = faster-whisper detects the spoken language on every
+    # utterance (the original behavior); anything else pins both
+    # listening and replying to that language so a noisy/ambiguous
+    # recording can't make Sunshine suddenly switch languages mid-chat —
+    # selectable from the tray "Impostazioni..." dialog, applied on top of
+    # (and overriding, at each app start) any per-identity language fixed
+    # earlier via voice command ("parla in inglese").
+    "language": "auto",
 }
 
 

@@ -22,7 +22,18 @@ SPRITES_DIR = _WRITABLE_ROOT / "assets" / "sprites" if getattr(sys, "frozen", Fa
 DATA_DIR = _WRITABLE_ROOT / "data"
 
 OLLAMA_HOST = "http://127.0.0.1:11434"
-OLLAMA_MODEL = "llama3.2:1b"
+# llama3.2:latest (3B), not the 1B variant: misurato direttamente su questa
+# macchina (GTX 970) — il modello 1B è velocissimo ma incoerente/divaga
+# (es. inventa di aver visto cose mai viste); il 3B, una volta caricato in
+# GPU, risponde in circa lo stesso tempo "a caldo" (~1-2s per una risposta
+# breve) con risposte molto più sensate — paghi solo un caricamento a
+# freddo più lungo la primissima volta dopo l'avvio di Ollama.
+OLLAMA_MODEL = "llama3.2:latest"
+# Lower than Ollama's own default (0.8): a small model left at default
+# temperature drifts off-topic more (confirmed in practice — see CLAUDE.md
+# on the "fazzoletto"/hallucinated-vision incidents). Still has some
+# variety, just noticeably more grounded in what was actually said.
+OLLAMA_TEMPERATURE = 0.4
 
 # Mood classifier: a small neural network trained from scratch by us (see
 # pet/mood/train.py and pet/mood/datasets/<lang>.py) on hand-written
@@ -37,10 +48,16 @@ MOOD_HAPPY_REACT_THRESHOLD = 0.4  # running mood score above which the pet plays
 SUPPORTED_LANGUAGES = ["it", "en", "fr", "es", "de", "pt"]
 DEFAULT_LANGUAGE = "it"
 
-# Chat brain: fully offline local model (gpt4all, no server/compiler/CUDA
-# needed) by default, instead of depending on a running Ollama instance.
-# Set to False to use OllamaClient (config.OLLAMA_*) instead.
-USE_LOCAL_LLM = True
+# Chat brain: Ollama (config.OLLAMA_*) by default — on a machine with a
+# GPU (this one has a GTX 970) it answers in ~1s once the model is loaded,
+# vs. several seconds on the CPU-only gpt4all path below, and the replies
+# come out noticeably more coherent at the same model size (measured: same
+# llama3.2:1b weights, just GPU vs. CPU-quantized inference). Set to True
+# to use the fully offline gpt4all/llama.cpp path instead (no Ollama
+# server dependency, but slower and less coherent on this hardware) — also
+# selectable per-user at runtime from the tray "Impostazioni..." dialog
+# regardless of this default, see pet/settings_store.py.
+USE_LOCAL_LLM = False
 LOCAL_LLM_REPO_ID = "bartowski/Llama-3.2-1B-Instruct-GGUF"
 LOCAL_LLM_FILENAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"  # ~770MB, runs fine on 8GB RAM, CPU-only
 LOCAL_MODEL_DIR = _WRITABLE_ROOT / "local_models"
@@ -72,6 +89,15 @@ PIPER_MODEL_DIR = LOCAL_MODEL_DIR / "piper"
 STT_SAMPLE_RATE = 16000
 STT_WHISPER_MODEL = "small"  # tiny/base/small/medium: bigger = more accurate but slower/heavier
 STT_WHISPER_MODEL_DIR = LOCAL_MODEL_DIR / "whisper"
+# Whisper's own confidence that a recorded clip contains no real speech.
+# The energy-based VAD below only filters out *quiet* sound, so it still
+# hands Whisper short bursts of background noise that are loud enough to
+# trigger it (a chair creak, a cough, a door) but aren't speech — Whisper
+# doesn't say "I don't know" in that case, it hallucinates a short, often
+# wrong-language phrase (confirmed in practice: real noise transcribed as
+# "あ、すみません。" and "You"). Segments with no_speech_prob above this are
+# discarded as silence instead of being passed on to the chat/intents.
+STT_NO_SPEECH_PROB_THRESHOLD = 0.6
 
 LANGUAGE_NAMES = {
     "it": "italiano", "en": "inglese", "fr": "francese",
@@ -176,7 +202,7 @@ MIN_PLATFORM_WIDTH = DISPLAY_SIZE * 1.2
 # (see AUTO_LEARN_*) once seen consistently.
 WEBCAM_INDEX = 0
 RECOGNITION_INTERVAL_MS = 400
-RECOGNITION_CONFIDENCE_THRESHOLD = 65.0  # cat LBPH distance: lower = more confident (stricter)
+CAT_FEATURE_SIMILARITY_THRESHOLD = 0.55  # HOG descriptor cosine similarity above which two cat crops count as the same cat
 RECOGNITION_CONSECUTIVE_FRAMES = 6       # frames needed in a row before confirming (~2.4s)
 RECOGNITION_DIR = BASE_DIR / "pet" / "recognition"
 RECOGNITION_SAMPLES_DIR = (_WRITABLE_ROOT / "recognition" / "samples") if getattr(sys, "frozen", False) else RECOGNITION_DIR / "samples"

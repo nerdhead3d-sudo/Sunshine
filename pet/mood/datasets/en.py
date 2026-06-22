@@ -259,4 +259,88 @@ EXAMPLES: list[tuple[str, str]] = [
     ("they cancelled the event last minute without any refund", "angry"),
     ("they lied to me about something important and I'm furious", "angry"),
     ("the neighbor makes noise all night and never stops", "angry"),
+
+    # --- third wave ---
+
+    # happy
+    ("I just got great news on the phone", "happy"),
+    ("we celebrated my birthday and it was perfect", "happy"),
+    ("I ran into an old friend by chance, what a joy", "happy"),
+    ("the sun is shining and I feel wonderful", "happy"),
+    ("I finally finished that project, I'm over the moon", "happy"),
+    ("the whole family got together today, what happiness", "happy"),
+    ("I won a small contest, I'm delighted", "happy"),
+    ("that meal was delicious, I feel completely satisfied", "happy"),
+    ("I danced all night, it was amazing", "happy"),
+    ("my plant finally bloomed, it made my whole day", "happy"),
+    ("someone gave me a sincere compliment today", "happy"),
+    ("I slept really well and feel full of energy", "happy"),
+
+    # affectionate
+    ("you always take care of me when I'm sick", "affectionate"),
+    ("I love holding your hand in silence", "affectionate"),
+    ("your smile always makes me happy", "affectionate"),
+    ("you're the first person I think of in the morning", "affectionate"),
+    ("I treasure every memory with you", "affectionate"),
+    ("you always know how to calm me with simple words", "affectionate"),
+    ("I'd write you a letter just to say thank you for existing", "affectionate"),
+    ("you're the sweetest person I know", "affectionate"),
+    ("I love watching you sleep peacefully", "affectionate"),
+    ("thank you for accepting me exactly as I am", "affectionate"),
+
+    # excited
+    ("I just got told about a promotion, I'm thrilled", "excited"),
+    ("the package I've been waiting for weeks is finally arriving tomorrow", "excited"),
+    ("I'm meeting my idol next week", "excited"),
+    ("we're going on a spontaneous road trip tonight", "excited"),
+    ("I found tickets for the sold-out show", "excited"),
+    ("tomorrow's the big launch, I can't sit still", "excited"),
+    ("I just beat an impossible level, what a rush", "excited"),
+    ("I got invited to an exclusive event this weekend", "excited"),
+    ("I can feel this idea is really going to work, I'm fired up", "excited"),
+    ("the countdown to the trip has finally started", "excited"),
+
+    # neutral
+    ("I put the groceries away in the fridge", "neutral"),
+    ("I just charged my phone", "neutral"),
+    ("I answered a few work emails", "neutral"),
+    ("I'm sorting out some paperwork", "neutral"),
+    ("I watered the plants this morning", "neutral"),
+    ("I'm checking the time of the next bus", "neutral"),
+    ("I wrote down my expenses for the month", "neutral"),
+    ("I'm trying out a new recipe for tonight", "neutral"),
+    ("I changed the bed sheets", "neutral"),
+    ("I'm adjusting my computer settings", "neutral"),
+
+    # bored
+    ("this show has no new episodes left, I'm out of ideas", "bored"),
+    ("I'm stuck at home with nothing interesting to do", "bored"),
+    ("this internship is endlessly boring", "bored"),
+    ("I reread the same message three times for lack of anything better", "bored"),
+    ("nobody's free to hang out today", "bored"),
+    ("this waiting room doesn't even have an interesting magazine", "bored"),
+    ("I'm scrolling my phone with no real purpose", "bored"),
+    ("this documentary is unbearably slow", "bored"),
+    ("I have nothing left to read on my shelf", "bored"),
+    ("this repetitive task is completely draining me", "bored"),
+
+    # sad
+    ("I saw a photo that reminded me of a time that's gone", "sad"),
+    ("I just haven't been able to feel better for days", "sad"),
+    ("nobody seemed to notice I was missing", "sad"),
+    ("I reread our old messages and it broke my heart", "sad"),
+    ("I feel invisible in this room full of people", "sad"),
+    ("the silence in the house feels so heavy tonight", "sad"),
+    ("I wish I'd gotten to say a proper goodbye", "sad"),
+    ("I don't feel like talking about how I feel anymore", "sad"),
+
+    # angry
+    ("they changed the schedule again without any warning", "angry"),
+    ("nobody takes my objections seriously", "angry"),
+    ("I got interrupted for the tenth time today", "angry"),
+    ("that salesperson clearly lied to me about the product", "angry"),
+    ("they sabotaged my work without the slightest apology", "angry"),
+    ("I'm sick of having to explain everything over and over", "angry"),
+    ("they cut me off in front of everyone", "angry"),
+    ("this internet outage has lasted three days with no response", "angry"),
 ]

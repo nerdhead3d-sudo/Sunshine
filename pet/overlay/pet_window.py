@@ -1,5 +1,6 @@
 import random
 import re
+import subprocess
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon, QPainter
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLineEdit,
     QMenu,
+    QPushButton,
     QSystemTrayIcon,
     QWidget,
 )
@@ -19,6 +21,7 @@ import config
 from pet import settings_store
 from pet.behavior.state_machine import PetStateMachine, State
 from pet.overlay.action_bubble import ActionBubble
+from pet.overlay.status_badge import StatusBadge
 from pet.overlay.sprite_animator import SpriteAnimator
 from pet.overlay.voice_chat import VoiceChatController
 from pet.overlay.window_tracker import top_edge_platforms
@@ -31,15 +34,17 @@ _BACKEND_LABELS = {
     settings_store.BACKEND_LOCAL: "Locale offline (gpt4all)",
     settings_store.BACKEND_OLLAMA: "Locale via Ollama",
     settings_store.BACKEND_OPENAI: "Online (ChatGPT/OpenAI)",
+    settings_store.BACKEND_ANTHROPIC: "Online (Claude/Anthropic)",
 }
 _BACKEND_VALUES = list(_BACKEND_LABELS.keys())
 
 
 class SettingsDialog(QDialog):
     """Tray "Impostazioni..." dialog: lets the user switch the chat
-    backend between the two offline options and an online one (their own
-    OpenAI API key, never bundled with the app) without editing config.py
-    or restarting Sunshine."""
+    backend between the two offline options and two online ones (their
+    own API keys, never bundled with the app — handy for comparing how
+    differently each one behaves) without editing config.py or restarting
+    Sunshine."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -53,24 +58,69 @@ class SettingsDialog(QDialog):
             self._backend_combo.addItem(_BACKEND_LABELS[value], value)
         self._backend_combo.setCurrentIndex(_BACKEND_VALUES.index(current["chat_backend"]))
 
-        self._api_key_edit = QLineEdit(self)
-        self._api_key_edit.setEchoMode(QLineEdit.Password)
-        self._api_key_edit.setPlaceholderText("sk-...")
-        self._api_key_edit.setText(current["openai_api_key"])
+        self._language_combo = QComboBox(self)
+        self._language_combo.addItem("Rilevamento automatico", "auto")
+        for code in config.SUPPORTED_LANGUAGES:
+            self._language_combo.addItem(config.LANGUAGE_NAMES[code].capitalize(), code)
+        language_values = ["auto"] + config.SUPPORTED_LANGUAGES
+        self._language_combo.setCurrentIndex(language_values.index(current["language"]))
+
+        self._openai_key_edit = QLineEdit(self)
+        self._openai_key_edit.setEchoMode(QLineEdit.Password)
+        self._openai_key_edit.setPlaceholderText("sk-...")
+        self._openai_key_edit.setText(current["openai_api_key"])
+
+        self._anthropic_key_edit = QLineEdit(self)
+        self._anthropic_key_edit.setEchoMode(QLineEdit.Password)
+        self._anthropic_key_edit.setPlaceholderText("sk-ant-...")
+        self._anthropic_key_edit.setText(current["anthropic_api_key"])
+
+        self._ollama_model_edit = QLineEdit(self)
+        self._ollama_model_edit.setPlaceholderText(f"vuoto = {config.OLLAMA_MODEL}")
+        self._ollama_model_edit.setText(current["ollama_model"])
+
+        self._ollama_host_edit = QLineEdit(self)
+        self._ollama_host_edit.setPlaceholderText(f"vuoto = {config.OLLAMA_HOST}")
+        self._ollama_host_edit.setText(current["ollama_host"])
+
+        self._ollama_signin_button = QPushButton("Accedi a Ollama Cloud (apre il browser)...", self)
+        self._ollama_signin_button.clicked.connect(self._open_ollama_signin)
+        self._ollama_model_edit.setPlaceholderText(
+            f"vuoto = {config.OLLAMA_MODEL} — dopo l'accesso, es. qwen3:cloud"
+        )
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel, self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
         layout = QFormLayout(self)
+        layout.addRow("Lingua:", self._language_combo)
         layout.addRow("Risposte:", self._backend_combo)
-        layout.addRow("Chiave API OpenAI:", self._api_key_edit)
+        layout.addRow("Chiave API OpenAI:", self._openai_key_edit)
+        layout.addRow("Chiave API Anthropic:", self._anthropic_key_edit)
+        layout.addRow("Modello Ollama (anche cloud):", self._ollama_model_edit)
+        layout.addRow("Host Ollama:", self._ollama_host_edit)
+        layout.addRow("", self._ollama_signin_button)
         layout.addRow(buttons)
+
+    def _open_ollama_signin(self):
+        """Launches `ollama signin` (the official Ollama CLI), which opens
+        the user's browser to ollama.com's own login/signup flow — this
+        code never sees or handles any credentials, it just starts the
+        same command the user would otherwise type in a terminal."""
+        try:
+            subprocess.Popen(["ollama", "signin"])
+        except OSError:
+            pass
 
     def save(self):
         settings_store.save({
             "chat_backend": self._backend_combo.currentData(),
-            "openai_api_key": self._api_key_edit.text().strip(),
+            "language": self._language_combo.currentData(),
+            "openai_api_key": self._openai_key_edit.text().strip(),
+            "anthropic_api_key": self._anthropic_key_edit.text().strip(),
+            "ollama_model": self._ollama_model_edit.text().strip(),
+            "ollama_host": self._ollama_host_edit.text().strip(),
         })
 
 
@@ -137,6 +187,8 @@ class PetWindow(QWidget):
         self.move_timer.start(config.MOVE_INTERVAL_MS)
 
         self.action_bubble = ActionBubble()
+        self.status_badge = StatusBadge()
+        self.status_badge.reposition(self._x, self._y, self._screen_rect)
 
         self._youtube_player: YouTubePlayerWindow | None = None
 
@@ -144,6 +196,7 @@ class PetWindow(QWidget):
         self.voice_chat.action_ready.connect(self._on_action_text)
         self.voice_chat.mood_changed.connect(self._on_mood_changed)
         self.voice_chat.youtube_requested.connect(self._on_youtube_requested)
+        self.voice_chat.status_changed.connect(self.status_badge.set_status)
         self.voice_chat.start()
 
         self.recognition = RecognitionService(self)
@@ -167,19 +220,25 @@ class PetWindow(QWidget):
         icon_path = config.SPRITES_DIR / "idle" / "idle_0.png"
         icon = QIcon(str(icon_path)) if icon_path.exists() else self.windowIcon()
 
-        menu = QMenu()
-        self.mute_action = menu.addAction("Muta microfono")
+        self.context_menu = QMenu()
+        self.mute_action = self.context_menu.addAction("Muta microfono")
         self.mute_action.setCheckable(True)
         self.mute_action.toggled.connect(self._set_muted)
-        menu.addSeparator()
-        menu.addAction("Impostazioni...", self._open_settings)
-        menu.addSeparator()
-        menu.addAction("Esci", QApplication.quit)
+        self.context_menu.addSeparator()
+        self.context_menu.addAction("Impostazioni...", self._open_settings)
+        self.context_menu.addSeparator()
+        self.context_menu.addAction("Esci", QApplication.quit)
 
         self.tray = QSystemTrayIcon(icon, self)
         self.tray.setToolTip(config.PET_NAME)
-        self.tray.setContextMenu(menu)
+        self.tray.setContextMenu(self.context_menu)
         self.tray.show()
+
+    def contextMenuEvent(self, event):
+        # Right-click directly on the pet shows the same menu as the tray
+        # icon (mute, Impostazioni..., Esci) — no need to dig in the
+        # system tray to reach it.
+        self.context_menu.exec(event.globalPos())
 
     @staticmethod
     def _home_screen_geometry():
@@ -191,6 +250,7 @@ class PetWindow(QWidget):
         self.frame_index += 1
         self._update_pixmap()
         self.update()
+        self.status_badge.reposition(self._x, self._y, self._screen_rect)
 
     def _tick(self):
         if self._dragging:
@@ -375,6 +435,7 @@ class PetWindow(QWidget):
         if dialog.exec() == QDialog.Accepted:
             dialog.save()
             self.voice_chat.reload_chat_backend()
+            self.voice_chat.apply_language_setting()
 
     def _set_muted(self, muted: bool):
         self._muted = muted

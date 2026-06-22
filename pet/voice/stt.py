@@ -161,7 +161,21 @@ class ContinuousListener(QObject):
         text, lang = "", self._fixed_language or config.DEFAULT_LANGUAGE
         try:
             segments, info = self._whisper.transcribe(audio, language=self._fixed_language)
-            text = "".join(segment.text for segment in segments).strip()
+            segment_list = list(segments)
+            # The energy-based VAD above only filters out *quiet* blocks; it
+            # still happily hands Whisper short bursts of background noise
+            # (a chair creak, a cough) that are "loud enough" but aren't
+            # speech. Whisper doesn't say "I don't know" in that case — it
+            # hallucinates a plausible-sounding short phrase, often in the
+            # wrong language (confirmed in practice: real recordings of
+            # background noise transcribed as "あ、すみません。" and "You").
+            # no_speech_prob is Whisper's own confidence that a segment
+            # contains no real speech; discarding high-confidence "no
+            # speech" segments catches this without touching the VAD.
+            if segment_list and max(s.no_speech_prob for s in segment_list) > config.STT_NO_SPEECH_PROB_THRESHOLD:
+                self.utterance_recognized.emit("", lang)
+                return
+            text = "".join(segment.text for segment in segment_list).strip()
             lang = info.language if info.language in config.SUPPORTED_LANGUAGES else lang
         except Exception:
             get_logger().exception("Local speech-to-text failed")

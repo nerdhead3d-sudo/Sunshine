@@ -24,6 +24,7 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 import config
 from pet import settings_store
+from pet.logging_setup import get_logger
 from pet.memory.store import MemoryStore
 from pet.mood.classifier import get_classifier
 from pet.skills import commands, intents, language_commands
@@ -33,27 +34,60 @@ from pet.voice.tts import SpeakWorker, stop_playback
 DEFAULT_IDENTITY = "Io"
 
 
-def make_chat_client(settings: dict | None = None):
+def make_chat_client(settings: dict | None = None) -> tuple[object, str | None]:
     """Builds the chat backend client chosen in settings_store (tray
-    "Impostazioni..." dialog): local gpt4all, local Ollama, or online
-    OpenAI. Falls back to the local backend if "openai" is selected but no
-    API key was entered yet, rather than crashing the whole reply loop."""
+    "Impostazioni..." dialog): local gpt4all, local Ollama, or one of two
+    online backends (OpenAI/Anthropic, user's own API key). Falls back to
+    the local backend if an online one is selected but no API key was
+    entered yet, or if Ollama was selected but isn't actually reachable
+    (see pet.ollama_client.is_reachable — without this check, a stopped
+    Ollama server used to silently turn every chat attempt into a
+    30-second wait followed by a generic error). Always logs which
+    backend/model ended up active. Returns (client, fallback_message):
+    the message is None unless a fallback happened, in which case the
+    caller (VoiceChatController) speaks it so the user actually finds out
+    instead of just getting worse replies with no explanation."""
     settings = settings or settings_store.load()
     backend = settings["chat_backend"]
 
     if backend == settings_store.BACKEND_OPENAI and settings["openai_api_key"]:
         from pet.openai_client import OpenAIClient
 
-        return OpenAIClient(settings["openai_api_key"], settings["openai_model"])
+        get_logger().info("Chat backend attivo: OpenAI (modello=%s)", settings["openai_model"])
+        return OpenAIClient(settings["openai_api_key"], settings["openai_model"]), None
+
+    if backend == settings_store.BACKEND_ANTHROPIC and settings["anthropic_api_key"]:
+        from pet.anthropic_client import AnthropicClient
+
+        get_logger().info("Chat backend attivo: Anthropic (modello=%s)", settings["anthropic_model"])
+        return AnthropicClient(settings["anthropic_api_key"], settings["anthropic_model"]), None
 
     if backend == settings_store.BACKEND_OLLAMA:
-        from pet.ollama_client import OllamaClient
+        from pet.ollama_client import OllamaClient, is_reachable
 
-        return OllamaClient()
+        host = settings["ollama_host"] or config.OLLAMA_HOST
+        if not is_reachable(host):
+            get_logger().warning("Ollama non risponde su %s; uso il modello locale offline", host)
+            from pet.local_llm_client import LocalLLMClient
+
+            return LocalLLMClient(), "Ollama non risponde, uso il modello offline per ora."
+
+        # Blank model = config.OLLAMA_MODEL as before; filled in = e.g. a
+        # free Ollama Cloud model ("ollama signin" + "ollama pull
+        # <model>:cloud"), still served through the same client/API.
+        kwargs = {"host": host}
+        if settings["ollama_model"]:
+            kwargs["model"] = settings["ollama_model"]
+        get_logger().info(
+            "Chat backend attivo: Ollama (modello=%s, host=%s)",
+            settings["ollama_model"] or config.OLLAMA_MODEL, host,
+        )
+        return OllamaClient(**kwargs), None
 
     from pet.local_llm_client import LocalLLMClient
 
-    return LocalLLMClient()
+    get_logger().info("Chat backend attivo: locale offline (gpt4all)")
+    return LocalLLMClient(), None
 
 _SENTENCE_END_RE = re.compile(r"[.!?](?:\s+|$)")
 _ACTION_RE = re.compile(r"\*([^*]+)\*")
@@ -133,11 +167,14 @@ class VoiceChatController(QObject):
     action_ready = Signal(str)  # narrated action text (e.g. "*ti tocca la fronte*"), for the UI to show
     mood_changed = Signal(str, float)  # (label, running valence score) from our own mood classifier
     youtube_requested = Signal(str, str)  # (action: "search"|"play"|"pause"|"close", query) for the UI to handle
+    status_changed = Signal(str)  # "listening"|"thinking"|"speaking"|"muted" — see pet/overlay/status_badge.py.
+                                   # Exists because the local STT/LLM pipeline is slow enough that without any
+                                   # feedback the user can't tell whether Sunshine heard them or is just stuck.
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._store = MemoryStore(config.DATA_DIR / "pet_memory.db")
-        self._client = make_chat_client()
+        self._client, self._pending_backend_warning = make_chat_client()
 
         self._identity_name = ""
         self._identity_id: int | None = None
@@ -161,23 +198,38 @@ class VoiceChatController(QObject):
         self._reply_buffer = ""
         self._streaming = False
 
-        self._speak_queue: list[str] = []
+        self._speak_queue: list[SpeakWorker] = []  # pre-built workers, so the next one can be prepare()'d ahead
         self._speaking = False
         self._speak_worker: SpeakWorker | None = None
 
         self._muted = False
         self._busy = False  # anything in flight (thinking/queued/speaking): listener stays paused
         self._interrupted = False  # set by interrupt(); stale chunks/replies/speech check this to bail out
+        self._last_status = ""
 
         self.set_identity(DEFAULT_IDENTITY)
 
     # -- lifecycle ----------------------------------------------------------
 
     def start(self):
+        self.apply_language_setting()
         self._listener.start()
         self._refresh_listening()
         self._reschedule_pending_reminders()
         self._reschedule_active_alarms()
+        if self._pending_backend_warning:
+            self.announce(self._pending_backend_warning)
+            self._pending_backend_warning = None
+
+    def apply_language_setting(self):
+        """Applies the tray "Impostazioni..." language choice: "auto" goes
+        back to per-utterance detection, anything else pins both listening
+        and replying to that language — overrides whatever per-identity
+        preference was stored earlier via voice command ("parla in
+        inglese"), since the whole point of this setting is "always start
+        in this language regardless of what got fixed before"."""
+        lang = settings_store.load()["language"]
+        self._set_fixed_language(None if lang == "auto" else lang)
 
     def stop(self):
         self._listener.stop()
@@ -191,7 +243,9 @@ class VoiceChatController(QObject):
         (tray "Impostazioni..." dialog), without restarting the app or
         losing the active identity's conversation history — only the
         backend object itself is replaced."""
-        self._client = make_chat_client()
+        self._client, warning = make_chat_client()
+        if warning:
+            self.announce(warning)
 
     def interrupt(self) -> bool:
         """Stops whatever Sunshine is currently thinking/saying (e.g. on
@@ -216,6 +270,20 @@ class VoiceChatController(QObject):
             self._listener.pause()
         else:
             self._listener.resume()
+        self._update_status()
+
+    def _update_status(self):
+        if self._muted:
+            status = "muted"
+        elif self._speaking:
+            status = "speaking"
+        elif self._busy:
+            status = "thinking"
+        else:
+            status = "listening"
+        if status != self._last_status:
+            self._last_status = status
+            self.status_changed.emit(status)
 
     # -- identity -------------------------------------------------------------
 
@@ -537,17 +605,36 @@ class VoiceChatController(QObject):
 
         self._busy = True
         self._refresh_listening()
-        self._speak_queue.append(dialogue)
+        worker = SpeakWorker(dialogue, self._current_language, self)
+        self._speak_queue.append(worker)
+        if self._speaking:
+            # Already mid-sentence: this new one will just sit in the
+            # queue for a while, so start preparing its audio now instead
+            # of waiting until it's popped (see _drain_speak_queue, which
+            # covers the case where the queue was empty a moment ago).
+            self._maybe_prefetch_next()
         self._drain_speak_queue()
 
     def _drain_speak_queue(self):
         if self._speaking or not self._speak_queue:
             return
-        sentence = self._speak_queue.pop(0)
+        worker = self._speak_queue.pop(0)
         self._speaking = True
-        self._speak_worker = SpeakWorker(sentence, self._current_language, self)
-        self._speak_worker.finished_speaking.connect(self._on_sentence_spoken)
-        self._speak_worker.start()
+        self._update_status()
+        self._speak_worker = worker
+        worker.finished_speaking.connect(self._on_sentence_spoken)
+        worker.start()
+        self._maybe_prefetch_next()
+
+    def _maybe_prefetch_next(self):
+        """Starts synthesizing the next queued sentence's audio on a
+        background thread right away, instead of waiting until the
+        current one finishes playing — cuts the dead air between
+        sentences on longer replies. SpeakWorker.prepare() is itself
+        idempotent/lock-guarded, so calling this more than once for the
+        same head-of-queue worker is harmless."""
+        if self._speak_queue:
+            threading.Thread(target=self._speak_queue[0].prepare, daemon=True).start()
 
     def _on_sentence_spoken(self):
         if not self._speaking:

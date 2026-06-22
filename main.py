@@ -2,9 +2,21 @@ import sys
 
 import config
 
+# Every state pet/behavior/state_machine.py can put the pet in; each needs
+# its own sprite subfolder. Checked individually (not just "is SPRITES_DIR
+# non-empty") so that adding a new state later — like "sleep"/"dragged"
+# were added after "idle"/"walk_*"/"sit"/"react" already existed on disk —
+# doesn't silently leave it with no sprite to draw (state_machine still
+# switches to it, paintEvent just draws nothing: the pet "disappears").
+_REQUIRED_SPRITE_STATES = ["idle", "walk_left", "walk_right", "sit", "react", "sleep", "dragged"]
+
 
 def ensure_sprites():
-    if not config.SPRITES_DIR.exists() or not any(config.SPRITES_DIR.iterdir()):
+    missing = [
+        state for state in _REQUIRED_SPRITE_STATES
+        if not (config.SPRITES_DIR / state).exists() or not any((config.SPRITES_DIR / state).glob("*.png"))
+    ]
+    if missing:
         from pet.assets.generate_placeholders import generate_all
         generate_all(config.SPRITES_DIR)
 

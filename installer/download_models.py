@@ -18,7 +18,6 @@ run" (each module downloads its own model lazily on first use) and
 """
 
 import subprocess
-import sys
 
 import config
 

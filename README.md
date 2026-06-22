@@ -12,30 +12,31 @@ manuale, e mantiene una memoria separata per ciascuna identità.
 pip install -r requirements.txt
 ```
 
-Il "cervello" conversazionale è **completamente locale e offline**
-(`gpt4all`, nessun server esterno, nessuna GPU/compilatore richiesti): al
-primo messaggio viene scaricato una volta da Hugging Face un modello GGUF
-leggero (~770MB, `config.LOCAL_LLM_REPO_ID`/`LOCAL_LLM_FILENAME`) e tenuto
-in cache in `pet/local_models/`. Gira bene anche su PC senza GPU dedicata
-con 8GB di RAM (es. Surface Pro 7).
+Il backend di chat è **selezionabile a runtime** dal menu "Impostazioni..."
+(tasto destro sul pet, o dall'icona nella system tray):
 
-**Consumo di RAM misurato** (macchina di sviluppo, non il PC target):
-con i 6 classificatori di umore + l'LLM locale + Whisper tutti caricati
-insieme (il picco tipico durante una conversazione), il processo usa
-circa **690MB di working set** — meno di quanto ci si aspetterebbe dalla
-sola somma dei file (`gpt4all`/llama.cpp carica il modello via
-memory-mapping, non lo duplica tutto in RAM privata). Su un PC con 8GB
-totali questo lascia margine per il resto, ma se senti il sistema
-appesantito puoi alleggerire scegliendo un modello Whisper più piccolo
-(`config.STT_WHISPER_MODEL = "base"` o `"tiny"` invece di `"small"`).
+- **Ollama** (default di `config.py`) — locale o cloud (free tier
+  ollama.com), risposte rapide e coerenti su una macchina con GPU
+  dedicata. Se Ollama non risulta raggiungibile, l'app passa
+  automaticamente al modello locale offline e lo annuncia a voce, invece
+  di un'attesa silenziosa:
 
-Se preferisci usare Ollama invece (es. per un modello più grande con GPU
-dedicata), imposta `USE_LOCAL_LLM = False` in `config.py` e assicurati che
-Ollama sia in esecuzione con il modello scaricato:
+  ```powershell
+  ollama pull llama3.2:latest
+  ```
 
-```powershell
-ollama pull llama3.2:1b
-```
+- **Locale offline** (`gpt4all`, nessun server esterno, nessuna
+  GPU/compilatore richiesti) — al primo uso scarica una volta da Hugging
+  Face un GGUF leggero (~770MB, `config.LOCAL_LLM_REPO_ID`/
+  `LOCAL_LLM_FILENAME`), tenuto in cache in `pet/local_models/`. Gira bene
+  anche su PC senza GPU dedicata con 8GB di RAM (es. Surface Pro 7); se il
+  sistema sembra appesantito puoi alleggerire scegliendo un modello
+  Whisper più piccolo (`config.STT_WHISPER_MODEL = "base"` o `"tiny"`
+  invece di `"small"`).
+- **Online** (ChatGPT/OpenAI o Claude/Anthropic) — richiede una chiave API
+  a pagamento propria (separata da un eventuale abbonamento Plus/Pro al
+  sito/app, che non basta), inserita dal dialog Impostazioni. Senza
+  chiave si ricade automaticamente sul backend locale.
 
 ## Avvio
 
@@ -64,9 +65,17 @@ tornare a terra (parametri `CLIMB_*`/`WINDOW_SCAN_INTERVAL_MS` in
 `config.py`).
 
 Per chiudere l'app: premi **Esc** col pet in primo piano, oppure usa
-**"Esci"** dal menu della sua icona nella system tray (vicino
-all'orologio — se non la vedi, controlla la freccetta `^` delle icone
-nascoste).
+**"Esci"** dal menu (tasto destro sul pet, o dalla sua icona nella system
+tray vicino all'orologio — se non la vedi, controlla la freccetta `^`
+delle icone nascoste). Lo stesso menu ha anche **"Impostazioni..."** per
+backend di chat, lingua e chiavi API (vedi sopra/sotto) e "Muta
+microfono".
+
+Una piccola etichetta colorata accanto al pet mostra sempre cosa sta
+facendo (👂 in ascolto / 💭 ci penso / 🗣️ ti parlo / 🔇 muto) — utile
+perché la pipeline vocale può richiedere qualche secondo, e senza questo
+indicatore non si capirebbe se Sunshine ha sentito qualcosa o è solo
+lento (`pet/overlay/status_badge.py`).
 
 ## Chat vocale continua
 
@@ -74,22 +83,31 @@ Niente fumetti né campi di testo: Sunshine ascolta sempre dal microfono
 predefinito (rilevamento automatico dell'inizio/fine del parlato, nessun
 tasto da premere), trascrive **completamente offline** con `faster-whisper`
 (modello Whisper scaricato una volta da Hugging Face, `STT_WHISPER_MODEL`
-in `config.py`), genera la risposta con il modello locale `gpt4all`
-(`USE_LOCAL_LLM`/`LOCAL_LLM_*` in `config.py`) e la legge ad alta voce. Le
-risposte vengono lette frase per frase non appena il modello le genera,
-invece di aspettare il testo completo, per ridurre l'attesa percepita.
+in `config.py`, con un filtro sulla confidenza di Whisper stesso che
+scarta trascrizioni di puro rumore di fondo invece di passarle al
+modello), genera la risposta col backend di chat scelto (vedi sopra) e la
+legge ad alta voce. Le risposte vengono lette frase per frase non appena
+il modello le genera, sintetizzando già la frase successiva mentre quella
+attuale sta ancora suonando, invece di aspettare sia il testo completo
+sia la fine della riproduzione — riduce l'attesa percepita su risposte
+lunghe.
 
-La voce ha tre livelli, dal migliore al più semplice:
-1. **edge-tts** (voce neurale online, richiede internet) — usata di default
-2. **Piper** (voce neurale offline, buona qualità, modello ~60MB scaricato
+La voce ha quattro livelli, dal migliore al più semplice:
+1. **OpenAI TTS** (`gpt-4o-mini-tts`, voce online molto naturale) — solo
+   se è stata inserita una chiave API OpenAI nelle Impostazioni (la stessa
+   usata per il backend di chat OpenAI, ma è una scelta indipendente)
+2. **edge-tts** (voce neurale online, gratis, richiede internet) — livello
+   online di default se non c'è una chiave OpenAI
+3. **Piper** (voce neurale offline, buona qualità, modello ~60MB scaricato
    una volta da Hugging Face) — entra in gioco automaticamente se manca
    internet
-3. **pyttsx3/SAPI5** (offline, più robotica) — ultima spiaggia, solo se
+4. **pyttsx3/SAPI5** (offline, più robotica) — ultima spiaggia, solo se
    anche Piper non riesce a partire
 
 Con questa catena **l'intera app funziona offline** (chat, riconoscimento
-vocale e voce), con qualità migliore quando c'è internet e un degrado
-controllato (mai muto) quando non c'è.
+vocale e voce, scegliendo i backend locali), con qualità migliore quando
+c'è internet/una chiave API e un degrado controllato (mai muto) quando
+non c'è.
 
 ## Lingue
 
@@ -98,10 +116,14 @@ e portoghese** (`config.SUPPORTED_LANGUAGES`). Di default rileva la
 lingua automaticamente a ogni frase (`faster-whisper`); puoi anche
 fissarla a voce dicendo ad esempio "parla in inglese" / "speak english" /
 "parle en français" / "habla español" / "sprich deutsch" / "fala
-português" (riconosciuto indipendentemente dalla lingua in cui lo dici).
-Per tornare al rilevamento automatico: "torna automatico". La scelta
-viene **ricordata per ogni identità** (salvata in `pet_memory.db`) e
-recuperata ai riavvii.
+português" (riconosciuto indipendentemente dalla lingua in cui lo dici),
+oppure scegliere una lingua fissa dal menu **Impostazioni...** (con
+l'opzione "Rilevamento automatico" per tornare al comportamento di
+default) — utile se l'auto-detect su audio rumoroso/ambiguo sceglie la
+lingua sbagliata. Per tornare al rilevamento automatico anche a voce:
+"torna automatico". La scelta fatta a voce viene **ricordata per ogni
+identità** (salvata in `pet_memory.db`) e recuperata ai riavvii; quella
+fatta da Impostazioni è globale e ha priorità a ogni avvio dell'app.
 
 Ogni lingua ha la sua voce (edge-tts/Piper, `config.TTS_VOICES`/
 `PIPER_VOICE_BASENAMES`) e il suo classificatore di umore (vedi sotto).
@@ -123,8 +145,8 @@ temperatura imparata (`pet/mood/model.py`, 10 tensori, ~20.000
 parametri), inizializzata a caso e allenata sul dataset.
 
 L'italiano è il più ricco (~950 frasi); le altre lingue sono punti di
-partenza più piccoli (~95-230 frasi ciascuna) — facili da ampliare
-aggiungendo righe al relativo file e riallenando:
+partenza più piccoli (en ~300, fr/es/de/pt ~230 frasi ciascuna) — facili
+da ampliare aggiungendo righe al relativo file e riallenando:
 
 ```powershell
 python -m pet.mood.train             # riallena tutte le lingue
@@ -154,7 +176,7 @@ falsi positivi.
 
 Prima di passare la frase al modello, Sunshine controlla se corrisponde a
 un comando conosciuto (`pet/skills/intents.py`) e in tal caso lo esegue
-subito, senza passare da Ollama:
+subito, senza passare dal backend di chat:
 
 - **Info**: "che ore sono", "che giorno è", "batteria", "quanto spazio
   libero [su disco]"
@@ -165,8 +187,8 @@ subito, senza passare da Ollama:
 - **Promemoria e timer**: "ricordami di...", "metti un timer di N
   minuti/secondi" — Sunshine risponde a voce allo scadere
 
-Le frasi non riconosciute proseguono normalmente verso la chat con
-Ollama. App/siti e mappature sono in `pet/skills/commands.py`, facilmente
+Le frasi non riconosciute proseguono normalmente verso il backend di
+chat. App/siti e mappature sono in `pet/skills/commands.py`, facilmente
 estendibili.
 
 Clicca sul pet per silenziare/riattivare il microfono in qualsiasi
@@ -187,14 +209,18 @@ solo CPU — modello "buffalo_sc", ~15MB, scaricato una volta da GitHub):
 ogni volto diventa un vettore numerico (embedding) che resta vicino a
 quello della stessa persona indipendentemente da luce/angolo/espressione,
 molto più robusto del semplice confronto di texture dei pixel. I **gatti**
-restano su Haar cascade + LBPH (OpenCV) — InsightFace è addestrato sulla
-geometria del volto umano e non si applica ai musi felini.
+vengono rilevati con un Haar cascade come prima (nessun rilevatore di
+landmark felini esiste) ma riconosciuti con un embedding HOG (Histogram
+of Oriented Gradients, `pet/recognition/cat_features.py`) — stessa logica
+delle persone (centroide per identità + similarità coseno), niente
+modello da scaricare: HOG è incluso in OpenCV ed è più tollerante a
+piccoli cambi di posa del vecchio confronto LBPH pixel-per-pixel.
 
 **Non serve nessun enrollment manuale**: quando vede una faccia/muso che
 non riconosce per qualche secondo di seguito, la impara da sola, le
 assegna un nome temporaneo (`Persona1`, `Gatto1`, ...) e salva il modello
 al volo (embedding in `pet/recognition/models/person/*.npy` per le
-persone, LBPH in `pet/recognition/models/cats.yml` per i gatti).
+persone, `pet/recognition/models/cat/*.npy` per i gatti).
 
 - Per una **persona** appena imparata, Sunshine chiede a voce "come ti
   chiami?" e rinomina l'identità (sia nel riconoscimento webcam che nella
@@ -203,9 +229,10 @@ persone, LBPH in `pet/recognition/models/cats.yml` per i gatti).
   temporaneo (i gatti non possono rispondere al posto loro).
 
 I parametri di apprendimento (`AUTO_LEARN_SAMPLE_COUNT`,
-`RECOGNITION_CONFIDENCE_THRESHOLD`, ecc.) sono in `config.py`. È comunque
-disponibile un comando manuale opzionale, se preferisci pre-assegnare un
-nome invece di aspettare l'apprendimento automatico:
+`CAT_FEATURE_SIMILARITY_THRESHOLD`, `FACE_EMBEDDING_SIMILARITY_THRESHOLD`,
+ecc.) sono in `config.py`. È comunque disponibile un comando manuale
+opzionale, se preferisci pre-assegnare un nome invece di aspettare
+l'apprendimento automatico:
 
 ```powershell
 python -m pet.recognition.enroll --identity Marco --kind person
@@ -218,7 +245,15 @@ Gli errori che avvengono in background (sintesi/riproduzione vocale,
 riconoscimento webcam, microfono non disponibile) vengono scritti in
 `pet/data/pet.log` invece di sparire silenziosamente — utile per capire
 perché qualcosa non ha funzionato senza dover rilanciare l'app da un
-terminale.
+terminale. Lo stesso file registra anche quale backend di chat è
+effettivamente attivo a ogni avvio/cambio impostazioni.
+
+## Programma di installazione (Windows)
+
+Cartella `installer/` (PyInstaller + Inno Setup) per generare un
+installer `.exe` standard, con scelta lingua/monitor, controllo
+automatico di Ollama e download dei modelli durante il setup. Vedi
+`CLAUDE.md` per i dettagli; build con `installer\build.ps1`.
 
 ## Test
 

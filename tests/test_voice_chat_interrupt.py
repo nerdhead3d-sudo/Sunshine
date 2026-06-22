@@ -19,6 +19,7 @@ def _make_controller():
     ctrl._speak_worker = None
     ctrl._interrupted = False
     ctrl._muted = False
+    ctrl._last_status = ""
     ctrl._listener = type("FakeListener", (), {"pause": lambda self: None, "resume": lambda self: None})()
     return ctrl
 

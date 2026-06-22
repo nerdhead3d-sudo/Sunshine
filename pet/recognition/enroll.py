@@ -1,6 +1,7 @@
 """Optional manual enrollment CLI: captures webcam samples for a person or
 cat under a chosen name and (re)trains the matching model right away
-(face-embedding centroid for people, LBPH for cats — see train.py).
+(feature-embedding centroid for both — face embeddings for people, HOG
+descriptors for cats — see train.py).
 
 Usage:
     python -m pet.recognition.enroll --identity Marco --kind person
@@ -125,8 +126,9 @@ def _countdown(cap, instruction: str, seconds: int) -> bool:
 
 
 def _capture_samples_cat(identity: str) -> int:
-    """Cats still go through the Haar-cascade + grayscale-crop path (LBPH,
-    see train.py) — no guided poses, cats don't take instructions."""
+    """Cats still go through the Haar-cascade + grayscale-crop path (HOG
+    feature matching, see train.py/cat_features.py) — no guided poses,
+    cats don't take instructions."""
     samples_dir = config.RECOGNITION_SAMPLES_DIR / "cat" / identity
     samples_dir.mkdir(parents=True, exist_ok=True)
     existing = len(list(samples_dir.glob("*.png")))

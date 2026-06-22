@@ -3,8 +3,9 @@ CPU-only) — replaces LBPH for the "person" kind. LBPH compares raw pixel
 texture, which is fragile to lighting/pose changes; this instead extracts
 a 512-d embedding where the same person's faces cluster together
 regardless of lighting/angle/expression, and matches via cosine
-similarity. Cats stay on the LBPH path (see recognizer.py): InsightFace's
-detector/aligner is built and trained for human face geometry only.
+similarity. Cats use a separate HOG-based embedding instead (see
+cat_features.py/recognizer.py): InsightFace's detector/aligner is built
+and trained for human face geometry only.
 
 The model (~15MB, "buffalo_sc" — the small/compact variant, chosen for
 compatibility with modest hardware) is downloaded once from InsightFace's

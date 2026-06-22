@@ -90,10 +90,13 @@ di chat, che risponde comunque nella lingua attiva.
 Non un modello pre-allenato: rete scritta e allenata da zero con PyTorch
 (`pet/mood/model.py`, 10 tensori, ~20k parametri), un modello separato per
 lingua su dataset scritti a mano (`pet/mood/datasets/<lingua>.py`).
-L'italiano è il più ricco (~950 frasi); le altre lingue sono punti di
-partenza più piccoli (~95-230 frasi), ampliabili aggiungendo righe e
-rilanciando `python -m pet.mood.train` (riallena tutte le lingue, o
-`--lang en` per una sola).
+L'italiano è il più ricco (~950 frasi). Le altre lingue erano punti di
+partenza piccoli (~165 frasi); espanse con una "terza ondata" di frasi
+scritte a mano per ciascuna lingua/categoria (en 299, fr/es/de/pt
+~232-234), poi riallenate con `python -m pet.mood.train` (riallena tutte
+le lingue, o `--lang en` per una sola) — ancora più piccole dell'italiano,
+ma un incremento reale (~40-80%), ampliabili ulteriormente con lo stesso
+procedimento.
 
 ## Funzionalità ispirate a "Lumo" (compagno AI fisico su Raspberry Pi)
 
@@ -180,16 +183,26 @@ placeholder "Persona1"/"Gatto1" non ancora nominato) — vedi
 batteria, volume, promemoria) restano disponibili per chiunque, sono a
 basso rischio.
 
-## Riconoscimento volti: deep learning per le persone, LBPH per i gatti
+## Riconoscimento volti: deep learning per le persone, HOG per i gatti
 
 Sostituito LBPH per le persone con embedding facciali deep-learning
 (`pet/recognition/face_embeddings.py`, InsightFace "buffalo_sc" via
 ONNX Runtime, CPU-only, ~15MB scaricato una volta da GitHub releases).
 Motivo: LBPH confronta texture di pixel locali, fragile a luce/posa;
 gli embedding restano vicini per la stessa persona indipendentemente da
-questi fattori. **I gatti restano su Haar cascade + LBPH** — il
-rilevatore/allineatore di InsightFace capisce solo geometria di volti
-umani, non musi felini.
+questi fattori. **I gatti** rilevano il muso con lo stesso Haar cascade di
+sempre (nessun rilevatore di landmark felini esiste), ma per il
+*matching* sono stati portati via da LBPH a un embedding HOG (Histogram
+of Oriented Gradients, `pet/recognition/cat_features.py`) con la stessa
+forma persone/cosine-similarity (centroide per identità in
+`pet/recognition/models/cat/<nome>.npy`, soglia
+`config.CAT_FEATURE_SIMILARITY_THRESHOLD`): LBPH confronta texture pixel
+per pixel, fragile perché i gatti — a differenza delle persone — non
+hanno un allineamento via landmark, solo un ritaglio rettangolare, quindi
+piccoli cambi di posa disallineano completamente il confronto. HOG
+descrive la struttura dei gradienti/contorni invece della texture grezza,
+più tollerante a questi disallineamenti. Nessun modello scaricato: HOG è
+incluso in OpenCV.
 
 Dettagli di installazione: `insightface` dichiara una dipendenza da
 `opencv-python`, che è in conflitto con `opencv-contrib-python` già
@@ -238,22 +251,71 @@ per cambiare backend di chat **a runtime, dal tray menu**, senza toccare
 
 - `pet/settings_store.py`: piccolo store JSON (`pet/data/settings.json`,
   in `.gitignore` come gli altri file dati) per `chat_backend` (`"local"`
-  gpt4all / `"ollama"` / `"openai"`) e `openai_api_key`/`openai_model`.
-  Separato da `config.py` apposta: `config.py` resta "default di chi
-  sviluppa", questo è "scelta dell'utente finale", persistita per
-  identità della macchina, non del codice.
-- `pet/openai_client.py`: nuovo backend online (chiave API propria
-  dell'utente, mai distribuita con l'app), stessa interfaccia
-  `build_messages`/`stream_reply` di `OllamaClient` — drop-in replacement.
+  gpt4all / `"ollama"` / `"openai"` / `"anthropic"`), le rispettive chiavi
+  API, `ollama_model`/`ollama_host` (vuoti = default di `config.py`, o
+  compilabili a mano per un modello Ollama Cloud — vedi sotto), e
+  `language` (`"auto"` o uno dei `config.SUPPORTED_LANGUAGES`, vedi
+  `VoiceChatController.apply_language_setting()`). Separato da
+  `config.py` apposta: `config.py` resta "default di chi sviluppa",
+  questo è "scelta dell'utente finale", persistita per identità della
+  macchina, non del codice.
+- `pet/openai_client.py` e `pet/anthropic_client.py`: due backend online
+  (chiave API propria dell'utente, mai distribuita con l'app), stessa
+  interfaccia `build_messages`/`stream_reply` di `OllamaClient` — drop-in
+  replacement. Aggiunti apposta per poter confrontare il comportamento di
+  modelli diversi dal tray, non perché servano per l'uso normale (Ollama
+  locale resta gratis e di default).
+- **Ollama Cloud** (free tier ollama.com, `ollama signin` + `ollama pull
+  <modello>:cloud`): nessun codice nuovo per il client, lo stesso
+  `OllamaClient` lo serve passando il nome del modello cloud nel campo
+  "Modello Ollama" del dialog — è lo stesso `ollama serve` locale a fare
+  da proxy. `SettingsDialog` ha un bottone "Accedi a Ollama Cloud" che
+  lancia `ollama signin` (apre il browser, nessuna credenziale gestita da
+  questo codice).
+- **Health check prima di usare Ollama**
+  (`pet/ollama_client.py::is_reachable()`, GET `/api/version` con timeout
+  ~1.5s): senza, un Ollama fermo/non raggiungibile faceva aspettare 30
+  secondi (il timeout del client) prima di un errore generico, ogni
+  singola domanda, senza che l'utente capisse perché. Ora
+  `make_chat_client()` controlla *prima* di istanziare `OllamaClient`, e
+  se non risponde **passa automaticamente al modello locale offline e lo
+  annuncia a voce** ("Ollama non risponde, uso il modello offline per
+  ora") invece di scoprirlo dopo un'attesa silenziosa.
 - `pet/overlay/voice_chat.py::make_chat_client()`: factory che legge
-  `settings_store` e istanzia il client giusto (con fallback al backend
-  locale se è selezionato "openai" ma non è stata ancora inserita una
-  chiave, invece di andare in errore); `VoiceChatController.
-  reload_chat_backend()` lo richiama per cambiare client senza perdere
-  cronologia/identità attive.
-- `pet/overlay/pet_window.py::SettingsDialog`: nuova voce "Impostazioni..."
-  nel tray menu (prima di "Esci"), combobox backend + campo chiave API
-  OpenAI (mascherato).
+  `settings_store` e istanzia il client giusto, restituendo
+  `(client, messaggio_di_fallback_o_None)` — il messaggio viene
+  annunciato a voce da chi chiama (`start()`/`reload_chat_backend()`) se
+  presente (backend online senza chiave, o Ollama irraggiungibile),
+  invece di fallire silenziosamente o lasciare l'utente a indovinare.
+- `pet/overlay/pet_window.py::SettingsDialog`: voce "Impostazioni..." nel
+  tray menu (anche col tasto destro direttamente sul pet, non solo
+  dall'icona tray) e menu contestuale condiviso (`self.context_menu`);
+  combobox lingua (con "Rilevamento automatico"), combobox backend, campi
+  chiave API OpenAI/Anthropic (mascherati), campi modello/host Ollama,
+  bottone accesso Ollama Cloud.
+
+## Altri aggiustamenti di qualità (sessione successiva)
+
+- **Temperature Ollama più bassa** (`config.OLLAMA_TEMPERATURE = 0.4`,
+  passata come `options={"temperature": ...}` in `ollama_client.py`):
+  a temperatura di default (0.8) un modello piccolo come `llama3.2`
+  divaga più facilmente (vedi gli incidenti "fazzoletto"/visione
+  inventata in questo stesso file) — più bassa non lo rende ripetitivo,
+  solo più aderente a quanto detto realmente.
+- **System prompt ancora più restrittivo sui gesti tra asterischi**: non
+  più "usala solo occasionalmente", ma esplicitamente "la maggior parte
+  delle risposte non deve averne nessuna" + divieto di descrivere azioni
+  sensoriali (guardare/vedere/osservare) che il pet non può davvero fare
+  — quelle frasi generavano descrizioni visive inventate.
+- **Pipelining TTS** (`pet/voice/tts.py::SpeakWorker.synthesize()`/
+  `prepare()`/`start()` separati invece di un unico `_run()` sintetizza+
+  riproduce): `VoiceChatController._maybe_prefetch_next()` sintetizza la
+  frase successiva in un thread separato *mentre* quella attuale sta
+  ancora suonando, invece di aspettare la fine della riproduzione prima
+  di iniziare a sintetizzare la prossima — riduce i buchi di silenzio tra
+  una frase e l'altra nelle risposte lunghe. Limite noto: il livello
+  pyttsx3 (ultima spiaggia) non supporta la pre-sintesi, sintetizza e
+  riproduce insieme quando ci si arriva (raro in pratica).
 
 ## Programma di installazione Windows (PyInstaller + Inno Setup)
 
