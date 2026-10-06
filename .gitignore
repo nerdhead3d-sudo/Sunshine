@@ -16,8 +16,9 @@ pet/recognition/samples/
 pet/recognition/models/
 pet/data/
 
-# Generated placeholder sprites (regenerated automatically on first run)
+# Generated sprites (sliced from pet/assets/sheets/ or procedural placeholders, regenerated on first run)
 pet/assets/sprites/
+pet/assets/sounds/
 
 # Temporary test artifacts
 _test_*.py

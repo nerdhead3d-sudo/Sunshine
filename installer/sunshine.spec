@@ -10,11 +10,13 @@
 # would re-unpack itself into a temp dir on every launch for no benefit
 # here, since the app already needs a real folder on disk for its models.
 #
-# Sprites are generated procedurally at first run (main.py:ensure_sprites)
-# and recognition models are downloaded/trained at runtime, so neither is
-# bundled here — only the source code and the hand-written mood model
-# weights (pet/mood/model/<lang>/*.pt + *.json), which never change without
-# a retrain.
+# Sprites are built at first run (main.py:ensure_sprites) from the bundled
+# source artwork — pet/assets/cat3d/ (3D renders) or the 2D sheet
+# pet/assets/sheets/black_cat.png — and recognition models are
+# downloaded/trained at runtime, so neither the generated sprites nor those
+# models are bundled; only the source code, that artwork and the
+# hand-written mood model weights (pet/mood/model/<lang>/*.pt + *.json),
+# which never change without a retrain.
 
 import sys
 from pathlib import Path
@@ -35,6 +37,8 @@ datas = [
     # actual .xml files sitting next to it, confirmed missing in a real
     # build (see CLAUDE.md "Programma di installazione Windows").
     (str(REPO_ROOT / "pet" / "memory" / "schema.sql"), "pet/memory"),
+    (str(REPO_ROOT / "pet" / "assets" / "sheets"), "pet/assets/sheets"),
+    (str(REPO_ROOT / "pet" / "assets" / "cat3d"), "pet/assets/cat3d"),
     (CV2_DATA_DIR, "cv2/data"),
 ]
 

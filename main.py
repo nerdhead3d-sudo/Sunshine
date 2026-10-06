@@ -11,14 +11,47 @@ import config
 _REQUIRED_SPRITE_STATES = ["idle", "walk_left", "walk_right", "sit", "react", "sleep", "dragged"]
 
 
+# Records which generator produced the sprites on disk, so switching source
+# (3D renders <-> 2D sprite sheet <-> procedural placeholders) regenerates
+# them even when every state folder already exists.
+_SPRITE_SOURCE_MARKER = ".source"
+
+
+def _sprite_source() -> str:
+    """Marker string for the sprite source to use: config.SPRITE_SOURCE, or
+    in "auto" the best one available (3D renders > 2D sheet > placeholders).
+    Size and layout version are part of it: frames are produced at
+    DISPLAY_SIZE, so changing either must regenerate them."""
+    from pet.assets import load_cat3d, slice_sheet
+
+    wanted = config.SPRITE_SOURCE
+    if wanted in ("auto", "3d") and load_cat3d.available():
+        return f"3d:{config.DISPLAY_SIZE}:v{load_cat3d.LAYOUT_VERSION}"
+    if wanted in ("auto", "3d", "sheet") and slice_sheet.SHEET_PATH.exists():
+        return f"sheet:{config.DISPLAY_SIZE}:v{slice_sheet.LAYOUT_VERSION}"
+    return "placeholders"
+
+
 def ensure_sprites():
+    source = _sprite_source()
+    marker = config.SPRITES_DIR / _SPRITE_SOURCE_MARKER
     missing = [
         state for state in _REQUIRED_SPRITE_STATES
         if not (config.SPRITES_DIR / state).exists() or not any((config.SPRITES_DIR / state).glob("*.png"))
     ]
-    if missing:
+    current = marker.read_text(encoding="utf-8").strip() if marker.exists() else None
+    if not missing and current == source:
+        return
+    if source.startswith("3d"):
+        from pet.assets import load_cat3d
+        load_cat3d.generate_all(config.SPRITES_DIR)
+    elif source.startswith("sheet"):
+        from pet.assets import slice_sheet
+        slice_sheet.generate_all(config.SPRITES_DIR)
+    else:
         from pet.assets.generate_placeholders import generate_all
         generate_all(config.SPRITES_DIR)
+    marker.write_text(source, encoding="utf-8")
 
 
 def run_app():

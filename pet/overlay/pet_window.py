@@ -19,9 +19,10 @@ from PySide6.QtWidgets import (
 
 import config
 from pet import settings_store
-from pet.behavior.state_machine import PetStateMachine, State
+from pet.behavior.state_machine import MOVING, PetStateMachine, State
 from pet.overlay.action_bubble import ActionBubble
 from pet.overlay.status_badge import StatusBadge
+from pet.overlay.sound_effects import SoundEffects
 from pet.overlay.sprite_animator import SpriteAnimator
 from pet.overlay.voice_chat import VoiceChatController
 from pet.overlay.window_tracker import top_edge_platforms
@@ -147,6 +148,9 @@ class PetWindow(QWidget):
         self.frame_index = 0
         self.current_pixmap = None
         self._last_state = None
+        # Sprite-sheet frames face right; after walking left the pet keeps
+        # facing left (mirrored frames) while idle/sitting/sleeping/etc.
+        self._facing_left = False
         self._muted = False
 
         self._screen_rect = self._home_screen_geometry()
@@ -175,6 +179,16 @@ class PetWindow(QWidget):
         self._fall_velocity = 0.0
         self._fall_target_y = 0.0
         self._fall_target_platform = None  # (x0, x1) if falling onto a window, else None
+        # Jump arc onto a window (see _maybe_climb): straight line from
+        # _jump_from to _jump_to over JUMP_TICKS along a Bézier arc.
+        self._jumping = False
+        self._jump_tick = 0
+        self._jump_from = (0, 0)
+        self._jump_to = (0, 0)
+        self._jump_target_platform = None
+        # Bumped whenever the user grabs the pet, so a pending _climb_down
+        # from an earlier climb doesn't yank it off wherever it was dropped.
+        self._climb_id = 0
 
         self._update_pixmap()
 
@@ -197,7 +211,12 @@ class PetWindow(QWidget):
         self.voice_chat.mood_changed.connect(self._on_mood_changed)
         self.voice_chat.youtube_requested.connect(self._on_youtube_requested)
         self.voice_chat.status_changed.connect(self.status_badge.set_status)
+        self.voice_chat.status_changed.connect(self._on_voice_status)
         self.voice_chat.start()
+        self.sounds = SoundEffects(
+            is_speaking=lambda: self.voice_chat.busy,
+            hold_listening=self.voice_chat.hold_listening,
+        )
 
         self.recognition = RecognitionService(self)
         self.recognition.identity_recognized.connect(self._on_identity_recognized)
@@ -214,6 +233,13 @@ class PetWindow(QWidget):
         self.climb_timer.timeout.connect(self._maybe_climb)
         self.climb_timer.start(config.CLIMB_CHECK_INTERVAL_MS)
 
+        # While standing on a window, re-check often that it's still there
+        # (not moved, minimized, closed): the regular window scan is too
+        # slow for that, the pet would hang in mid-air for seconds.
+        self.platform_check_timer = QTimer(self)
+        self.platform_check_timer.timeout.connect(self._check_platform_support)
+        self.platform_check_timer.start(config.PLATFORM_CHECK_INTERVAL_MS)
+
         self._setup_tray()
 
     def _setup_tray(self):
@@ -224,6 +250,10 @@ class PetWindow(QWidget):
         self.mute_action = self.context_menu.addAction("Muta microfono")
         self.mute_action.setCheckable(True)
         self.mute_action.toggled.connect(self._set_muted)
+        self.sound_action = self.context_menu.addAction("Effetti sonori")
+        self.sound_action.setCheckable(True)
+        self.sound_action.setChecked(self.sounds.enabled)
+        self.sound_action.toggled.connect(self.sounds.set_enabled)
         self.context_menu.addSeparator()
         self.context_menu.addAction("Impostazioni...", self._open_settings)
         self.context_menu.addSeparator()
@@ -247,13 +277,33 @@ class PetWindow(QWidget):
         return screens[index].availableGeometry()
 
     def _advance_frame(self):
-        self.frame_index += 1
+        state = self.state_machine.state.value
+        # One-shot animations (jump/land/play) hold their last frame instead
+        # of looping back to the first one.
+        if state not in config.ONE_SHOT_STATES or self.frame_index + 1 < self.animator.frame_count(state):
+            self.frame_index += 1
         self._update_pixmap()
         self.update()
         self.status_badge.reposition(self._x, self._y, self._screen_rect)
 
     def _tick(self):
         if self._dragging:
+            return
+
+        if self._jumping:
+            self._jump_tick += 1
+            t = min(1.0, self._jump_tick / config.JUMP_TICKS)
+            (x0, y0), (x1, y1) = self._jump_from, self._jump_to
+            # Quadratic Bézier with its control point above the higher end:
+            # the arc always clears the window edge and comes down onto it,
+            # even for a big climb (a plain line + bump would just slide up).
+            cy = min(y0, y1) - 2 * config.JUMP_ARC_PX
+            self._x = round(x0 + (x1 - x0) * t)
+            self._y = round((1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t ** 2 * y1)
+            if t >= 1.0:
+                self._jumping = False
+                self._land(y1, self._jump_target_platform)
+            self.move(self._x, self._y)
             return
 
         if self._falling:
@@ -276,15 +326,18 @@ class PetWindow(QWidget):
 
         state = self.state_machine.tick(at_left, at_right)
 
-        if state == State.WALK_LEFT:
-            self._x -= config.WALK_SPEED
-        elif state == State.WALK_RIGHT:
-            self._x += config.WALK_SPEED
+        direction = MOVING.get(state)
+        if direction is not None:
+            speed = config.RUN_SPEED if state in (State.RUN_LEFT, State.RUN_RIGHT) else config.WALK_SPEED
+            self._x += direction * speed
+            self._facing_left = direction < 0
 
         self._x = max(left_bound, min(self._x, right_bound))
         self.move(self._x, self._y)
 
         if state != self._last_state:
+            if state == State.PLAY:
+                self._play_sound("trill")
             self._last_state = state
             self.frame_index = 0
             self._update_pixmap()
@@ -296,35 +349,97 @@ class PetWindow(QWidget):
             self._screen_rect,
             exclude_hwnd=hwnd,
             min_width=config.MIN_PLATFORM_WIDTH,
-            pet_height=config.DISPLAY_SIZE,
+            pet_height=config.PET_VISIBLE_HEIGHT,
         )
 
+    def _supporting_platform(self):
+        """The (x0, x1) of the window top the pet is standing on right now,
+        or None if no window top is under its feet any more."""
+        feet_y = self._y + config.DISPLAY_SIZE
+        pet_left, pet_right = self._x, self._x + config.DISPLAY_SIZE
+        for x0, x1, top in self._platforms:
+            if abs(top - feet_y) > config.PLATFORM_TOLERANCE_PX:
+                continue
+            if min(pet_right, x1) - max(pet_left, x0) >= config.DISPLAY_SIZE * 0.5:
+                return (x0, x1)
+        return None
+
+    def _check_platform_support(self):
+        if not self._on_platform or self._dragging or self._falling or self._jumping:
+            return
+        self._refresh_platforms()
+        bounds = self._supporting_platform()
+        if bounds is not None:
+            self._platform_bounds = bounds  # follows a resize of the same window
+            return
+        # The window was moved/minimized/closed: fall, possibly onto
+        # another window further down.
+        self._on_platform = False
+        self._platform_bounds = None
+        self._climb_id += 1  # a pending _climb_down is moot now
+        landing_y, landing_platform = self._compute_landing()
+        self._start_fall(landing_y, landing_platform, yowl=True)
+
     def _maybe_climb(self):
-        if self._dragging or self._falling or self._on_platform or not self._platforms:
+        if self._dragging or self._falling or self._jumping or self._on_platform or not self._platforms:
             return
         if random.random() > config.CLIMB_CHANCE:
             return
 
         x0, x1, top = random.choice(self._platforms)
         target_y = top - config.DISPLAY_SIZE
-        if target_y < self._screen_rect.y():
-            return  # safety net: never stand above the visible screen area
+        if top - config.PET_VISIBLE_HEIGHT < self._screen_rect.y():
+            return  # safety net: never stand (visibly) above the screen area
 
-        self._on_platform = True
-        self._platform_bounds = (x0, x1)
-        self._x = max(x0, min(self._x, x1 - config.DISPLAY_SIZE))
-        self._y = target_y
-        self.move(self._x, self._y)
-        self.state_machine.trigger_react(15)
+        target_x = max(x0, min(self._x, x1 - config.DISPLAY_SIZE))
+        if target_x != self._x:
+            self._facing_left = target_x < self._x
+        self._jumping = True
+        self._jump_tick = 0
+        self._jump_from = (self._x, self._y)
+        self._jump_to = (target_x, target_y)
+        self._jump_target_platform = (x0, x1)
+        self._enter_state(self.state_machine.start_jump)
+        self._play_sound("hop")
 
-        QTimer.singleShot(config.CLIMB_DURATION_MS, self._climb_down)
+        climb_id = self._climb_id
+        QTimer.singleShot(
+            config.CLIMB_DURATION_MS,
+            lambda: self._climb_down() if climb_id == self._climb_id else None,
+        )
 
     def _climb_down(self):
+        if self._dragging or self._falling or self._jumping or not self._on_platform:
+            return
+        # Hop off the window: fall (with the fall animation) to the ground.
         self._on_platform = False
         self._platform_bounds = None
-        self._y = self._ground_y
-        self.move(self._x, self._y)
-        self.state_machine.trigger_react(15)
+        self._start_fall(self._ground_y, None)
+
+    def _start_fall(self, target_y: float, platform_bounds, yowl: bool = False):
+        """`yowl`: an involuntary fall (dropped by the user, window pulled
+        away) — long "miaaaooo" if it's a real drop, not a few pixels."""
+        if yowl and target_y - self._y >= config.FALL_MEOW_MIN_PX:
+            self._play_sound("fall_meow")
+        self._falling = True
+        self._fall_velocity = 0.0
+        self._fall_target_y = target_y
+        self._fall_target_platform = platform_bounds
+        self._enter_state(self.state_machine.start_fall)
+
+    def _play_sound(self, name: str):
+        sounds = getattr(self, "sounds", None)  # absent in display-less unit tests
+        if sounds is not None:
+            sounds.play(name)
+
+    def _enter_state(self, transition):
+        """Applies an external state-machine transition and restarts the
+        animation from its first frame."""
+        transition()
+        self._last_state = self.state_machine.state
+        self.frame_index = 0
+        self._update_pixmap()
+        self.update()
 
     def _compute_landing(self):
         """Where the pet should land if dropped right now: the top edge of
@@ -355,15 +470,18 @@ class PetWindow(QWidget):
         self._falling = False
         self._on_platform = platform_bounds is not None
         self._platform_bounds = platform_bounds
-        self.state_machine.end_drag()
-        self.state_machine.trigger_react(config.LAND_REACT_TICKS)
-        self._last_state = self.state_machine.state
-        self.frame_index = 0
-        self._update_pixmap()
-        self.update()
+        self._enter_state(self.state_machine.land)
+        self._play_sound("thud")
 
     def _update_pixmap(self):
-        self.current_pixmap = self.animator.get_frame(self.state_machine.state.value, self.frame_index)
+        state = self.state_machine.state
+        # walk_*/run_* already have their own direction on disk.
+        mirrored = self._facing_left and state not in MOVING
+        self.current_pixmap = self.animator.get_frame(state.value, self.frame_index, mirrored=mirrored)
+        interval = config.STATE_FRAME_INTERVAL_MS.get(state.value, config.FRAME_INTERVAL_MS)
+        timer = getattr(self, "anim_timer", None)  # not created yet on the first call in __init__
+        if timer is not None and timer.interval() != interval:
+            timer.setInterval(interval)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -379,6 +497,7 @@ class PetWindow(QWidget):
 
     def _on_identity_recognized(self, name: str, kind: str):
         self.state_machine.trigger_react()
+        self._play_sound("meow")
         if kind != "person":
             return
 
@@ -418,9 +537,17 @@ class PetWindow(QWidget):
             self._youtube_player.close_player()
         self.state_machine.trigger_react(10)
 
+    def _on_voice_status(self, status: str):
+        # Turn to face the user while Sunshine talks, like looking at them.
+        if status == "speaking":
+            self.state_machine.face_front(hold=True)
+        else:
+            self.state_machine.release_front()
+
     def _on_mood_changed(self, label: str, value: float):
         if value >= config.MOOD_HAPPY_REACT_THRESHOLD:
             self.state_machine.trigger_react(10)
+            self._play_sound("meow")
 
     def _on_appearance_changed(self, name: str, region: str):
         if region == "capelli":
@@ -470,10 +597,15 @@ class PetWindow(QWidget):
                 if not self._stroke_triggered and self._stroke_path_px >= config.PET_STROKE_MIN_PATH_PX:
                     self._stroke_triggered = True
                     self.voice_chat.register_pat()
+                    self._play_sound("purr")
                     self.state_machine.trigger_react(10)
                 return
             self._drag_started = True
             self._dragging = True
+            self._jumping = False
+            self._falling = False
+            self._climb_id += 1  # cancel any pending _climb_down
+            self._play_sound("mew")
             self.state_machine.start_drag()
             self.frame_index = 0
             self._last_state = self.state_machine.state
@@ -498,10 +630,7 @@ class PetWindow(QWidget):
             if self._y >= landing_y:
                 self._land(landing_y, landing_platform)
             else:
-                self._falling = True
-                self._fall_velocity = 0.0
-                self._fall_target_y = landing_y
-                self._fall_target_platform = landing_platform
+                self._start_fall(landing_y, landing_platform, yowl=True)
             self.move(self._x, self._y)
         elif not self._stroke_triggered:
             if not self.voice_chat.interrupt():

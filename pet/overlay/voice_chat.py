@@ -204,6 +204,7 @@ class VoiceChatController(QObject):
 
         self._muted = False
         self._busy = False  # anything in flight (thinking/queued/speaking): listener stays paused
+        self._listen_holds = 0  # active hold_listening() calls (long sound effects playing)
         self._interrupted = False  # set by interrupt(); stale chunks/replies/speech check this to bail out
         self._last_status = ""
 
@@ -247,6 +248,24 @@ class VoiceChatController(QObject):
         if warning:
             self.announce(warning)
 
+    def hold_listening(self, ms: int):
+        """Pauses the microphone for `ms` (e.g. while the pet plays a long
+        sound effect through the speakers), then restores the normal
+        muted/busy-driven state. Overlapping holds extend each other."""
+        self._listen_holds += 1
+        self._refresh_listening()
+
+        def release():
+            self._listen_holds -= 1
+            self._refresh_listening()
+
+        QTimer.singleShot(ms, release)
+
+    @property
+    def busy(self) -> bool:
+        """True while Sunshine is thinking up or speaking a reply."""
+        return self._busy
+
     def interrupt(self) -> bool:
         """Stops whatever Sunshine is currently thinking/saying (e.g. on
         click). Returns False if it wasn't doing anything, so the caller
@@ -266,7 +285,7 @@ class VoiceChatController(QObject):
         return True
 
     def _refresh_listening(self):
-        if self._muted or self._busy:
+        if self._muted or self._busy or self._listen_holds:
             self._listener.pause()
         else:
             self._listener.resume()

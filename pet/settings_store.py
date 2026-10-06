@@ -11,7 +11,9 @@ import threading
 import config
 
 _SETTINGS_PATH = config.DATA_DIR / "settings.json"
-_lock = threading.Lock()
+# Re-entrant: save() calls load() while already holding it — a plain Lock
+# deadlocked there (the "Impostazioni..." dialog hung the app on OK).
+_lock = threading.RLock()
 
 BACKEND_LOCAL = "local"      # offline gpt4all/llama.cpp (pet/local_llm_client.py)
 BACKEND_OLLAMA = "ollama"    # local Ollama server (pet/ollama_client.py)
@@ -40,6 +42,9 @@ _DEFAULTS = {
     # (and overriding, at each app start) any per-identity language fixed
     # earlier via voice command ("parla in inglese").
     "language": "auto",
+    # Pet sound effects (meow, purr, paw thud... pet/overlay/sound_effects.py),
+    # toggled from the tray menu.
+    "sound_effects": True,
 }
 
 

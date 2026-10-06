@@ -25,11 +25,65 @@ ovvie dal solo codice, per chi riprende il lavoro su un'altra macchina.
 
 ## Pipeline sprite
 
-Solo `generate_placeholders.py` (procedurale, forme PIL, nessuna foto/AI),
-richiamato da `main.py:ensure_sprites()` quando `pet/assets/sprites/` non
-esiste o è vuota (cartella in `.gitignore`, sempre rigenerata). Genera
-tutti gli stati: `idle`, `walk_left`/`walk_right`, `sit`, `react`, `sleep`,
-`dragged`.
+`config.SPRITE_SOURCE` (`"auto"` di default) sceglie fra tre sorgenti, in
+ordine di preferenza: **render 3D** > sprite sheet 2D > placeholder
+procedurali (`main.py:_sprite_source`).
+
+**Render 3D (default)**: modello 3D Meshy AI dell'utente ("Midnight
+Whiskers", OBJ+texture, ~14MB, **fuori dal repo** — sulla macchina
+originale in `D:\Download\Meshy_AI_Midnight_Whiskers_...`), statico senza
+rig. `tools/cat3d/render_cat_3d.py` (script Blender, `blender -b`) lo
+decima, gli costruisce uno scheletro da quadrupede a mano (posizioni
+delle articolazioni misurate dalla mesh), lo skinna con pesi automatici
+(mesh pulita: un solo pezzo, manifold — ha funzionato al primo colpo) e
+anima ogni stato proceduralmente (FK; IK sulle zampe per accucciato/
+seduto/sdraiato). Stile scelto dall'utente: **completamente opaco** (niente
+riflessi, niente rim light rosa — provati e scartati anche "vellutato",
+cel-shading e contorno chiaro). Note sulle pose:
+- **Niente IK di Blender per le zampe**: il suo pole girava i gomiti
+  anteriori in avanti ("zampe spezzate", segnalato dall'utente). Ora
+  `_solve_leg` risolve analiticamente le 2 ossa nel piano laterale
+  scegliendo sempre l'articolazione all'indietro (come gomito e garretto
+  del gatto); `_leg_abs`/`_tail_abs` posano zampe/coda per angoli assoluti.
+- Le zampe anteriori sono corte rispetto al busto: il seduto non può
+  inclinarsi oltre ~20° senza staccarle da terra.
+- Il modello non ha palpebre: `tools/cat3d/close_eyes.py` genera una
+  variante della texture con iride/pupille ridipinte col colore del pelo,
+  usata solo per i frame di `sleep` (`--eyes-closed=`). Un primo tentativo
+  con la testa girata dall'altra parte sembrava "senza testa".
+- `dragged` = gattino preso per la collottola: corpo appeso quasi
+  verticale e raggomitolato (zampe dietro alla pancia, coda infilata
+  sotto), richiesto dall'utente.
+- Code lunghe (seduto/sdraiato) arricciate apposta per restare dentro il
+  box di ritaglio comune, che altrimenti si allargherebbe e
+  rimpicciolirebbe il gatto in tutti gli stati.
+`tools/cat3d/crop_frames.py` ritaglia tutti i frame con **un unico box**
+(terreno sul bordo inferiore) in `pet/assets/cat3d/<stato>/` (nel repo,
+~5MB): telecamera fissa, quindi niente tremolio laterale fra frame, a
+differenza dello sheet 2D. `pet/assets/load_cat3d.py` li scala a
+`DISPLAY_SIZE` all'avvio. Per rigenerare/aggiungere animazioni: Blender
+(su questa macchina `D:\Programmi\blender\blender.exe`) + il modello.
+
+**Sprite sheet 2D** (fallback): **sprite sheet del gatto nero** fornito dall'utente
+(`pet/assets/sheets/black_cat.png`, RGBA con sfondo trasparente vero,
+righe IDLE/WALK/RUN/JUMP/FALL/LAND/ATTACK/HURT/DIE/SLEEP con etichetta a
+sinistra). `pet/assets/slice_sheet.py` lo ritaglia per **sagoma** (blob
+dell'alpha), non a griglia: la griglia dello sheet è irregolare, l'utente
+ha chiesto esplicitamente niente tagli dritti. Le etichette servono solo
+a trovare il centro di ogni riga. Mappatura righe → stati in
+`_STATE_SOURCES` (es. `sit` da HURT 4-7, `dragged` da FALL 1-3); le righe
+non ancora usate vengono comunque esportate (`run`, `jump`, ...) per
+stati futuri. Prima versione dello sheet aveva sfondo scuro non
+trasparente: scontornare un gatto nero da lì (soglie, stima sfondo) non
+funzionava bene, l'utente l'ha rigenerato trasparente — se lo si
+sostituisce, deve restare RGBA trasparente.
+
+`main.py:ensure_sprites()` usa lo sheet se esiste, altrimenti ripiega su
+`generate_placeholders.py` (procedurale, PIL); un marker
+`pet/assets/sprites/.source` forza la rigenerazione quando cambia la
+sorgente (cartella in `.gitignore`, sempre rigenerata).
+`SpriteAnimator` ora scala con `SmoothTransformation` (non più
+nearest-neighbour da pixel-art).
 
 Una sessione parallela su un'altra macchina aveva aggiunto una pipeline
 basata su due foto di riferimento (`generate_from_reference.py` +
@@ -40,8 +94,32 @@ va richiesta di nuovo esplicitamente, non va reintrodotta di default.
 
 ## Comportamenti pet
 
-`pet/behavior/state_machine.py` ha `IDLE`/`WALK_LEFT`/`WALK_RIGHT`/`REACT`/
-`SIT`/`SLEEP`/`DRAGGED`:
+`pet/behavior/state_machine.py` ha `IDLE`/`WALK_*`/`RUN_*`/`REACT`/`SIT`/
+`SLEEP`/`PLAY`/`DRAGGED`/`JUMP`/`FALL`/`LAND` (gli ultimi aggiunti per usare
+le righe RUN/JUMP/FALL/LAND/ATTACK dello sprite sheet):
+- `RUN_*` (`config.RUN_CHANCE`, `RUN_SPEED`) e `PLAY` (zampata, riga
+  ATTACK, `config.PLAY_CHANCE`) partono da soli dall'idle.
+- `JUMP`/`FALL`/`DRAGGED` sono pilotati da `PetWindow` (fisica di
+  salto/caduta/trascinamento) e `tick()` non li tocca; `LAND`/`REACT`/
+  `PLAY` sono a tempo e tornano a idle.
+- Velocità di animazione per stato (`config.STATE_FRAME_INTERVAL_MS`) e
+  animazioni one-shot che si fermano sull'ultimo frame
+  (`config.ONE_SHOT_STATES`: jump/land/play).
+- `TURN_FRONT`/`FRONT`/`TURN_BACK` (solo render 3D; con sheet/placeholder
+  ripiegano su idle): si gira verso l'utente spesso — l'utente vuole
+  destra/sinistra/fronte **in parti circa uguali**: `FRONT_CHANCE`/
+  `FRONT_DURATION_TICKS` tarati simulando la macchina a stati (~36/32/32%)
+  — e **per tutto il tempo in cui Sunshine parla**
+  (`face_front(hold=True)`/`release_front()` da
+  `PetWindow._on_voice_status`), poi torna di lato. Non si gira se
+  dorme o è in salto/caduta/trascinato. `turn_back` è `turn_front` al
+  contrario (`load_cat3d._REVERSED`).
+- Il gatto resta girato nell'ultima direzione di marcia anche da fermo
+  (`PetWindow._facing_left`, frame specchiati da `SpriteAnimator`).
+- Senza sheet (placeholder procedurali) gli stati nuovi ripiegano su
+  quelli vecchi (`_FALLBACK_STATES` in `sprite_animator.py`).
+
+Dettagli dei singoli stati:
 - `SIT`: durante l'idle, con probabilità `config.SIT_CHANCE` si siede invece
   di camminare.
 - `SLEEP`: da seduto, con probabilità `config.SLEEP_CHANCE` si addormenta.
@@ -53,11 +131,52 @@ va richiesta di nuovo esplicitamente, non va reintrodotta di default.
   invece di teletrasportarsi; se durante la caduta una finestra è
   direttamente sotto (sovrapposizione orizzontale >= 50% della larghezza
   del pet), atterra sul suo bordo superiore invece che a terra
-  (`PetWindow._compute_landing`/`_land`). Fa un piccolo rimbalzo
-  (`config.LAND_REACT_TICKS`) all'atterraggio in entrambi i casi.
+  (`PetWindow._compute_landing`/`_land`). Animazione `FALL` mentre cade,
+  `LAND` (`config.LAND_TICKS`) all'atterraggio in entrambi i casi.
+  Una finestra conta come piattaforma solo se sopra ha almeno
+  `config.PET_VISIBLE_HEIGHT` di spazio nello schermo (altezza *visibile*
+  del gatto, ~62% del frame): usare l'intero `DISPLAY_SIZE` (320px)
+  scartava quasi tutte le finestre su un monitor 1080p, e il gatto
+  lasciato sopra una finestra cadeva fino alla barra.
 
 Il pet si arrampica anche autonomamente sulle finestre ogni tanto
-(`config.CLIMB_*`, indipendente dal drag) — vedi `_maybe_climb`.
+(`config.CLIMB_*`, indipendente dal drag) — vedi `_maybe_climb`: salto
+ad arco (Bézier, `config.JUMP_TICKS`/`JUMP_ARC_PX`, animazione `JUMP`),
+poi dopo `CLIMB_DURATION_MS` scende cadendo (`FALL` → `LAND`). Se nel
+frattempo l'utente lo afferra, la discesa programmata viene annullata
+(`_climb_id`).
+
+Mentre è sopra una finestra, `_check_platform_support` (ogni
+`config.PLATFORM_CHECK_INTERVAL_MS`, molto più spesso della scansione
+normale) verifica che sotto le zampe ci sia ancora un bordo finestra:
+se la finestra viene spostata, minimizzata o chiusa, il gatto cade
+(eventualmente su un'altra finestra più in basso); se è solo
+ridimensionata, aggiorna i limiti su cui cammina.
+
+## Effetti sonori
+
+`pet/assets/generate_sounds.py` sintetizza con numpy (niente audio
+registrato/scaricato, offline come gli sprite) miagolio, "mew", trillo,
+fusa, "hop" e tonfo in `config.SOUNDS_DIR` (in `.gitignore`, rigenerati
+quando cambia `VERSION`). Riprodotti da `pet/overlay/sound_effects.py`
+con **`QSoundEffect`, non `winsound`**: la voce TTS usa
+`winsound.PlaySound`, che ha un solo canale — un effetto suonato lì
+interromperebbe Sunshine a metà frase. I suoni durano < 0.35s apposta:
+il listener ignora suoni più corti di `config.VAD_MIN_SPEECH_SECONDS`,
+quindi i miagolii dalle casse non vengono trascritti come frasi (non c'è
+cancellazione d'eco). Eccezione: il "miaaaooo" lungo (~1s) quando cade
+dopo un drop o perché la finestra sotto sparisce (non quando scende da
+solo; solo da almeno `config.FALL_MEOW_MIN_PX`) — per quello
+`SoundEffects` mette in pausa il microfono per la durata del suono
+(`VoiceChatController.hold_listening`). I suoni
+"vocali" tacciono mentre Sunshine pensa/parla
+(`VoiceChatController.busy`); on/off dal menu ("Effetti sonori",
+persistito in `settings_store`).
+
+Trovato e corretto nel farlo: `settings_store.save()` chiamava `load()`
+tenendo già un `threading.Lock` non rientrante → deadlock, il dialog
+"Impostazioni..." bloccava l'app premendo OK. Ora `RLock`
+(`tests/test_settings_store.py`).
 
 ## Click sul pet
 

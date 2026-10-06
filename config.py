@@ -20,6 +20,8 @@ else:
 ASSETS_DIR = BASE_DIR / "pet" / "assets"
 SPRITES_DIR = _WRITABLE_ROOT / "assets" / "sprites" if getattr(sys, "frozen", False) else ASSETS_DIR / "sprites"
 DATA_DIR = _WRITABLE_ROOT / "data"
+# Synthesized at first run by pet/assets/generate_sounds.py, like the sprites.
+SOUNDS_DIR = _WRITABLE_ROOT / "assets" / "sounds" if getattr(sys, "frozen", False) else ASSETS_DIR / "sounds"
 
 OLLAMA_HOST = "http://127.0.0.1:11434"
 # llama3.2:latest (3B), not the 1B variant: misurato direttamente su questa
@@ -143,15 +145,46 @@ VAD_MIN_SPEECH_SECONDS = 0.4
 VAD_START_CONFIRM_SECONDS = 0.2  # level must stay above threshold this long before it counts as real speech
 MIC_RETRY_SECONDS = 5.0  # how often to retry opening the mic if it's unavailable/disconnected
 
+# Where the pet's sprites come from (main.ensure_sprites):
+#   "3d"     pre-rendered frames of the rigged 3D cat (pet/assets/cat3d/,
+#            made offline with Blender, see tools/cat3d/)
+#   "sheet"  the 2D AI-generated sprite sheet (pet/assets/sheets/black_cat.png)
+#   "placeholders"  procedural pixel-art (no artwork needed)
+#   "auto"   the first of these that is available
+SPRITE_SOURCE = "auto"
+
 # Sprites are generated at SPRITE_SIZE and scaled up for display.
 SPRITE_SIZE = 64
-DISPLAY_SCALE = 3
+DISPLAY_SCALE = 5  # 320px; sprite-sheet frames are sliced straight at this size (slice_sheet)
 DISPLAY_SIZE = SPRITE_SIZE * DISPLAY_SCALE
 
-FRAME_INTERVAL_MS = 220   # animation frame rate
+FRAME_INTERVAL_MS = 220   # default animation frame rate (idle, sit, sleep, ...)
 MOVE_INTERVAL_MS = 60     # movement/state-machine tick rate
-WALK_SPEED = 3            # pixels per movement tick
-GROUND_MARGIN = 12        # pixels above the taskbar/work-area edge
+WALK_SPEED = 4            # pixels per movement tick
+RUN_SPEED = 10            # pixels per movement tick while running
+
+# Per-state animation speed, overriding FRAME_INTERVAL_MS: the sprite-sheet
+# walk/run cycles have 8-10 frames and look like slow motion at 220ms.
+# Walk/run are tuned for the 3D frames (16-frame walk, 12-frame run) so a
+# full stride roughly matches WALK_SPEED/RUN_SPEED and the paws don't slide.
+STATE_FRAME_INTERVAL_MS = {
+    "walk_left": 70, "walk_right": 70,
+    "run_left": 60, "run_right": 60,
+    "jump": 80, "fall": 90, "land": 55, "play": 80, "react": 80,
+    "idle": 140, "sit": 260, "sleep": 320, "dragged": 120,
+    "turn_front": 65, "turn_back": 65, "front": 140,
+}
+# Animations played once and then held on their last frame (instead of
+# looping) until the state ends.
+ONE_SHOT_STATES = {"jump", "land", "play", "turn_front", "turn_back"}
+
+# Visible height of the cat inside its DISPLAY_SIZE x DISPLAY_SIZE window:
+# the sheet frames leave the top ~40% transparent (tallest pose ~195/320).
+# Used as the headroom a window needs above it to count as a platform —
+# requiring the whole DISPLAY_SIZE rejected almost every window on a
+# 1080p monitor once the sprite grew to 320px.
+PET_VISIBLE_HEIGHT = int(DISPLAY_SIZE * 0.62)
+GROUND_MARGIN = 0         # pixels above the taskbar/work-area edge (0 = paws right on the taskbar)
 
 # Sit/sleep: while idle, the pet sometimes sits down instead of walking off
 # again; while sitting, it can drift into a longer sleep before waking back
@@ -160,6 +193,19 @@ SIT_CHANCE = 0.3                    # probability idle -> sit instead of walk
 SLEEP_CHANCE = 0.25                 # probability sit -> sleep instead of idle
 SIT_DURATION_TICKS = (60, 150)      # ~3.6-9s
 SLEEP_DURATION_TICKS = (150, 300)   # ~9-18s
+# Idle can also turn into a run (instead of a walk) or a short playful
+# pounce (the sheet's ATTACK row, "play" state).
+RUN_CHANCE = 0.25                   # probability a walk is a run instead
+PLAY_CHANCE = 0.1                   # probability idle -> play
+PLAY_TICKS = 14                     # ~0.85s: one pass of the pounce animation
+# Facing the viewer (3D renders: turn_front / front / turn_back): on its
+# own, and for as long as Sunshine is talking. Chance/duration tuned by
+# simulating the state machine so that, over time, the pet faces right,
+# left and the viewer about a third each (user request).
+FRONT_CHANCE = 0.35                 # probability idle -> turn to face the viewer
+FRONT_DURATION_TICKS = (100, 220)   # ~6-13s facing the viewer when it's spontaneous
+FRONT_LINGER_TICKS = 25             # ~1.5s still facing the viewer after Sunshine stops talking
+TURN_TICKS = 8                      # ~0.5s: one pass of the turn animation
 
 # Drag: holding the pet with the mouse and moving it past this many pixels
 # (in either axis) turns a click into a drag instead of toggling mute.
@@ -173,11 +219,14 @@ DRAG_MOVE_THRESHOLD_PX = 6
 PET_STROKE_MIN_PATH_PX = 60
 PET_STROKE_MOOD_VALENCE = 0.5  # positive mood nudge applied once per stroke gesture
 
-# Drop: when released mid-air, the pet falls back to the ground instead of
-# teleporting there, then plays a short bounce reaction on touchdown.
+# Drop: when released mid-air, the pet falls (fall animation) instead of
+# teleporting, then plays the landing animation on touchdown.
 FALL_ACCEL = 1.5          # pixels/tick^2 of downward acceleration while falling
 FALL_MAX_SPEED = 14       # terminal velocity, pixels per movement tick
-LAND_REACT_TICKS = 8      # short happy-bounce reaction played on touchdown
+LAND_TICKS = 9            # ~0.55s landing animation on touchdown
+FALL_MEOW_MIN_PX = 200    # dropped from at least this high: long "miaaaooo" while falling
+
+SOUND_EFFECTS_VOLUME = 0.5  # 0..1, pet sound effects (meow, purr, thud...)
 
 ACTION_BUBBLE_DURATION_MS = 4000  # how long a narrated-action bubble stays visible
 
@@ -192,7 +241,11 @@ WINDOW_SCAN_INTERVAL_MS = 3000   # how often to re-scan visible windows
 CLIMB_CHECK_INTERVAL_MS = 8000   # how often to consider climbing, while grounded
 CLIMB_CHANCE = 0.4               # probability of climbing at each check
 CLIMB_DURATION_MS = 15000        # how long to stay on a window before descending
+JUMP_TICKS = 12                  # ~0.7s: duration of the jump arc onto a window
+JUMP_ARC_PX = 90                 # roughly how far the arc rises above the higher end
 MIN_PLATFORM_WIDTH = DISPLAY_SIZE * 1.2
+PLATFORM_CHECK_INTERVAL_MS = 250 # while on a window: how often to check it's still there
+PLATFORM_TOLERANCE_PX = 3        # window top may differ this much from the pet's feet
 
 # Recognition (Fase 4): webcam-based identification of people (deep-
 # learning face embeddings, see face_embeddings.py) and cats (Haar

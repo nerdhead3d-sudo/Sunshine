@@ -20,6 +20,7 @@ def _make_controller():
     ctrl._interrupted = False
     ctrl._muted = False
     ctrl._last_status = ""
+    ctrl._listen_holds = 0
     ctrl._listener = type("FakeListener", (), {"pause": lambda self: None, "resume": lambda self: None})()
     return ctrl
 
@@ -63,6 +64,26 @@ class InterruptTests(unittest.TestCase):
         ctrl._reply_buffer = "frase rimasta in sospeso."
         ctrl._on_reply_finished()
         self.assertFalse(ctrl._busy)
+
+
+class HoldListeningTests(unittest.TestCase):
+    def test_hold_pauses_the_listener_until_released(self):
+        from unittest import mock
+
+        ctrl = _make_controller()
+        calls = []
+        ctrl._listener = type("L", (), {
+            "pause": lambda self: calls.append("pause"),
+            "resume": lambda self: calls.append("resume"),
+        })()
+        timers = []
+        with mock.patch.object(voice_chat.QTimer, "singleShot", lambda ms, fn: timers.append(fn)):
+            ctrl.hold_listening(1000)
+        self.assertEqual(calls[-1], "pause")
+
+        timers[0]()  # the hold expires
+        self.assertEqual(calls[-1], "resume")
+        self.assertEqual(ctrl._listen_holds, 0)
 
 
 if __name__ == "__main__":
